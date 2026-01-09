@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./backend/AzureLens.API
+      dockerfile: Dockerfile
+    container_name: azurelens-api
+    ports:
+      - "5000:80"
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/azurelens.db
+      - OpenAI__ApiKey=${OPENAI_API_KEY}
+      - OpenAI__Model=gpt-4o
+      - OpenAI__MaxTokens=2000
+      - OpenAI__Temperature=0.7
+      - CacheSettings__ResourceCacheMinutes=30
+      - CacheSettings__CostCacheMinutes=60
+      - CacheSettings__AIRecommendationCacheMinutes=120
+    volumes:
+      - ./data:/app/data
+    networks:
+      - azurelens-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend/azurelens-ui
+      dockerfile: Dockerfile
+    container_name: azurelens-ui
+    ports:
+      - "3000:80"
+    environment:
+      - REACT_APP_API_URL=http://localhost:5000/api
+    depends_on:
+      - backend
+    networks:
+      - azurelens-network
+    restart: unless-stopped
+
+networks:
+  azurelens-network:
+    driver: bridge
+
+volumes:
+  data:
+    driver: local
