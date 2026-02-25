@@ -1,6 +1,6 @@
 # AzureLens - Azure Resource Monitor
 
-A full-stack application to monitor Azure resources, costs, and security recommendations with AI-powered insights. Includes a web UI, REST API, and Model Context Protocol (MCP) server for AI assistant integration.
+A full-stack application to monitor Azure resources, costs, and security recommendations with AI-powered insights. Includes a web UI and REST API backend.
 
 ## Features
 
@@ -12,11 +12,6 @@ A full-stack application to monitor Azure resources, costs, and security recomme
 - **AI Insights**: Generate intelligent recommendations using OpenAI
 - **Data Caching**: SQLite-based caching for improved performance
 
-### MCP Server Integration
-- **AI Assistant Integration**: Use with Claude Desktop, GitHub Copilot, or any MCP-compatible client
-- **Conversational Queries**: Ask natural language questions about your Azure environment
-- **Real-time Data**: Leverages AzureLens API with caching
-
 ## Architecture
 
 ```
@@ -24,9 +19,9 @@ A full-stack application to monitor Azure resources, costs, and security recomme
 │  React Web UI  │
 └────────┬────────┘
          │
-┌────────▼────────────┐      ┌──────────────┐
-│  .NET 8 Web API    │◄─────┤  MCP Server  │◄── AI Assistants
-│   (AzureLens)     │      └──────────────┘    (Claude, etc.)
+┌────────▼────────────┐
+│  .NET 8 Web API    │
+│   (AzureLens)     │
 └────────┬────────────┘
          │
     ┌────▼────┐
@@ -44,15 +39,13 @@ A full-stack application to monitor Azure resources, costs, and security recomme
 - **Frontend**: React with TypeScript, Material-UI, Recharts
 - **Backend**: .NET 8 Web API, Entity Framework Core
 - **Database**: SQLite (for caching)
-- **MCP Server**: .NET 9, Model Context Protocol
 - **Cloud**: Azure SDK, Azure Resource Manager
 - **AI**: OpenAI GPT-4o
 - **Integration**: Jira REST API
 
 ## Prerequisites
 
-- .NET 8 SDK (for main API)
-- .NET 9 SDK (for MCP server)
+- .NET 8 SDK
 - Node.js (v18+)
 - Azure Service Principal with appropriate permissions:
   - Reader access to subscriptions
@@ -118,71 +111,6 @@ Save the output:
 - `appId` → Client ID
 - `password` → Client Secret
 - `tenant` → Tenant ID
-
-## MCP Server Setup (Optional)
-
-The MCP server allows AI assistants to query your Azure environment conversationally.
-
-### Prerequisites
-- AzureLens API must be running
-- Azure Service Principal credentials
-
-### Configuration for Claude Desktop
-
-1. **Build the MCP server:**
-```powershell
-cd AzureMonitorMcp/AzureMonitorMcp.Server
-dotnet build
-```
-
-2. **Configure Claude Desktop:**
-
-Edit your Claude Desktop configuration file:
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "azurelens": {
-      "command": "dotnet",
-      "args": [
-        "run",
-        "--project",
-        "<FULL_PATH_TO_PROJECT>\\AzureMonitorMcp\\AzureMonitorMcp.Server"
-      ],
-      "env": {
-        "API_BASE_URL": "http://localhost:5000",
-        "AZURE_TENANT_ID": "your-tenant-id",
-        "AZURE_CLIENT_ID": "your-client-id",
-        "AZURE_CLIENT_SECRET": "your-client-secret"
-      }
-    }
-  }
-}
-```
-
-3. **Restart Claude Desktop**
-
-### Using the MCP Server
-
-Once configured, you can ask Claude:
-- "What Azure subscriptions do I have?"
-- "Show me all resources in subscription xyz"
-- "What are my resource groups?"
-- "Get cost data for the last 30 days"
-- "Show me security recommendations"
-
-### Available MCP Tools
-
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `get_subscriptions` | List all Azure subscriptions | None |
-| `get_resources` | Get resources in subscription/resource group | subscriptionId, resourceGroupName (optional) |
-| `get_costs` | Get cost data for date range | subscriptionId, startDate, endDate |
-| `get_resource_groups` | List resource groups | subscriptionId |
-| `get_resource_skus` | Get available SKUs | subscriptionId, location (optional) |
-| `get_recommendations` | Get security/cost recommendations | subscriptionId |
 
 ## Usage
 
@@ -263,8 +191,6 @@ ConnectionStrings__DefaultConnection=Data Source=/app/data/azurelens.db
 │   │   ├── services/           # API client
 │   │   └── types/              # TypeScript types
 │   └── public/
-├── AzureMonitorMcp/            # MCP Server
-│   └── AzureMonitorMcp.Server/ # .NET MCP implementation
 └── docker-compose.yml          # Docker configuration
 ```
 
@@ -303,12 +229,6 @@ docker-compose build
 - Ensure Service Principal has correct permissions
 - Check subscription IDs are valid
 - Verify network connectivity to Azure
-
-### MCP Server Issues
-- Ensure AzureLens API is running before starting MCP server
-- Check API_BASE_URL points to correct endpoint
-- Verify credentials in MCP client configuration
-- Check MCP server logs in Claude Desktop: Help → View Logs
 
 ### Frontend Issues
 - Verify API is running on expected port
@@ -514,4 +434,4 @@ curl -X POST http://localhost:8080/api/export/costs \
 
 ---
 
-**Note**: Replace `<repository-url>` and `<FULL_PATH_TO_PROJECT>` with actual values when setting up.
+**Note**: Replace `<repository-url>` with your actual repository URL when setting up.
