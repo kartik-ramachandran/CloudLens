@@ -145,7 +145,7 @@ public class NotificationService : INotificationService
     public async Task SaveNotificationSettingsAsync(NotificationSettings settings)
     {
         var existing = await GetNotificationSettingsAsync();
-        
+
         if (existing != null)
         {
             existing.ChannelType = settings.ChannelType;
@@ -162,5 +162,39 @@ public class NotificationService : INotificationService
         }
 
         await _dbContext.SaveChangesAsync();
+    }
+
+    public async Task<bool> SendNotificationAsync(string title, string message, string severity = "info")
+    {
+        try
+        {
+            var notificationSettings = await GetNotificationSettingsAsync();
+            if (notificationSettings == null || !notificationSettings.IsEnabled || string.IsNullOrEmpty(notificationSettings.WebhookUrl))
+                return false;
+
+            var color = severity.ToLower() switch
+            {
+                "error" or "critical" => "#d13438",
+                "warning" => "#ff8c00",
+                "success" => "#107c10",
+                _ => "#0078d4"
+            };
+
+            var notification = new NotificationRequest
+            {
+                Title = title,
+                Message = message,
+                Color = color
+            };
+
+            return notificationSettings.ChannelType.ToString().ToLower() == "teams"
+                ? await SendTeamsNotificationAsync(notificationSettings.WebhookUrl, notification)
+                : await SendSlackNotificationAsync(notificationSettings.WebhookUrl, notification);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error sending notification");
+            return false;
+        }
     }
 }

@@ -63,12 +63,22 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
       <Card sx={{ maxWidth: 500, width: '100%' }}>
         <CardContent sx={{ p: 4 }}>
           <Box sx={{ textAlign: 'center', mb: 3 }}>
-            <CloudIcon sx={{ fontSize: 60, color: 'primary.main', mb: 2 }} />
-            <Typography variant="h4" component="h1" gutterBottom>
-              Cost Finder
+            <Box 
+              component="img" 
+              src="/logo.svg" 
+              alt="AzureLens Logo"
+              sx={{ 
+                width: 80, 
+                height: 80, 
+                mb: 2,
+                filter: 'drop-shadow(0px 4px 8px rgba(0, 120, 212, 0.2))'
+              }} 
+            />
+            <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700, color: '#0078D4' }}>
+              AzureLens
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Connect to Azure to monitor resources, costs, and security
+              Advanced Azure Security, Compliance & Cost Management
             </Typography>
           </Box>
 
@@ -129,119 +139,6 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
             <Typography variant="caption" color="text.secondary">
               Note: Your credentials are stored locally in your browser. You can update them anytime from Settings.
             </Typography>
-          </Box>
-
-          {/* Demo Credentials Section */}
-          <Box 
-            sx={{ 
-              mt: 3, 
-              p: 2, 
-              bgcolor: '#f5f5f5', 
-              borderRadius: 2,
-              border: '1px solid #e0e0e0'
-            }}
-          >
-            <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: '#667eea' }}>
-              📋 Demo Credentials
-            </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
-              Use these credentials to view the demo (India_test subscription)
-            </Typography>
-            
-            <Box sx={{ bgcolor: 'white', p: 1.5, borderRadius: 1, mb: 1 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: 'text.secondary' }}>
-                Tenant ID:
-              </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  fontFamily: 'monospace', 
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: '#f0f0f0' },
-                  p: 0.5,
-                  borderRadius: 0.5
-                }}
-                onClick={() => {
-                  setTenantId('71a9d935-2760-4973-b514-a5c33566cc4b');
-                  navigator.clipboard.writeText('71a9d935-2760-4973-b514-a5c33566cc4b');
-                }}
-                title="Click to copy and fill"
-              >
-                71a9d935-2760-4973-b514-a5c33566cc4b
-              </Typography>
-            </Box>
-
-            <Box sx={{ bgcolor: 'white', p: 1.5, borderRadius: 1, mb: 1 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: 'text.secondary' }}>
-                Client ID (InternalCostFinder):
-              </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  fontFamily: 'monospace', 
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: '#f0f0f0' },
-                  p: 0.5,
-                  borderRadius: 0.5
-                }}
-                onClick={() => {
-                  setClientId('adbcf251-7c66-4a72-a319-84a5ed3a096e');
-                  navigator.clipboard.writeText('adbcf251-7c66-4a72-a319-84a5ed3a096e');
-                }}
-                title="Click to copy and fill"
-              >
-                adbcf251-7c66-4a72-a319-84a5ed3a096e
-              </Typography>
-            </Box>
-
-            <Box sx={{ bgcolor: 'white', p: 1.5, borderRadius: 1 }}>
-              <Typography variant="caption" sx={{ fontWeight: 600, display: 'block', color: 'text.secondary' }}>
-                Client Secret:
-              </Typography>
-              <Typography 
-                variant="body2" 
-                sx={{ 
-                  fontFamily: 'monospace', 
-                  fontSize: '0.75rem',
-                  cursor: 'pointer',
-                  '&:hover': { bgcolor: '#f0f0f0' },
-                  p: 0.5,
-                  borderRadius: 0.5
-                }}
-                onClick={() => {
-                  setClientSecret('YOUR-CLIENT-SECRET-HERE');
-                  navigator.clipboard.writeText('YOUR-CLIENT-SECRET-HERE');
-                }}
-                title="Click to copy and fill"
-              >
-                YOUR-CLIENT-SECRET-HERE
-              </Typography>
-            </Box>
-
-            <Button
-              variant="outlined"
-              size="small"
-              fullWidth
-              sx={{ 
-                mt: 2, 
-                textTransform: 'none',
-                borderColor: '#667eea',
-                color: '#667eea',
-                '&:hover': {
-                  borderColor: '#764ba2',
-                  bgcolor: 'rgba(102, 126, 234, 0.04)'
-                }
-              }}
-              onClick={() => {
-                setTenantId('YOUR-TENANT-ID-HERE');
-                setClientId('YOUR-CLIENT-ID-HERE');
-                setClientSecret('YOUR-CLIENT-SECRET-HERE');
-              }}
-            >
-              Fill All Demo Credentials
-            </Button>
           </Box>
         </CardContent>
       </Card>

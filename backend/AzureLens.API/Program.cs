@@ -28,6 +28,25 @@ builder.Services.AddScoped<IJiraService, JiraService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<IExportService, ExportService>();
 builder.Services.AddSingleton<ICredentialCacheService, CredentialCacheService>();
+
+// FinOps, Compliance, and Vanta services
+builder.Services.AddScoped<IFinOpsService, FinOpsService>();
+builder.Services.AddScoped<IComplianceService, ComplianceService>();
+builder.Services.AddScoped<IVantaService, VantaService>();
+builder.Services.AddHostedService<VantaSyncBackgroundService>();
+
+// SOC2 Extended services
+builder.Services.AddScoped<IAccessReviewService, AccessReviewService>();
+builder.Services.AddScoped<IChangeManagementService, ChangeManagementService>();
+builder.Services.AddScoped<IRemediationService, RemediationService>();
+builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
+builder.Services.AddScoped<IVulnerabilityService, VulnerabilityService>();
+builder.Services.AddScoped<INetworkSecurityService, NetworkSecurityService>();
+
+// SOC Incident Management services
+builder.Services.AddScoped<ISocIncidentService, SocIncidentService>();
+builder.Services.AddScoped<IAutoRemediationService, AutoRemediationService>();
+
 builder.Services.AddHttpClient();
 
 // Configure CORS

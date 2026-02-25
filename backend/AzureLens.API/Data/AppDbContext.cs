@@ -18,6 +18,19 @@ public class AppDbContext : DbContext
     public DbSet<AISettings> AISettings { get; set; }
     public DbSet<JiraSettings> JiraSettings { get; set; }
 
+    // FinOps, Compliance, and Vanta tables
+    public DbSet<VantaSettings> VantaSettings { get; set; }
+    public DbSet<VantaSyncLog> VantaSyncLogs { get; set; }
+    public DbSet<AuditLogEntry> AuditLogs { get; set; }
+
+    // SOC2 Extended
+    public DbSet<RemediationItem> RemediationItems { get; set; }
+    public DbSet<ComplianceSnapshot> ComplianceSnapshots { get; set; }
+
+    // SOC Incident Management
+    public DbSet<SocIncident> SocIncidents { get; set; }
+    public DbSet<RemediationAttempt> RemediationAttempts { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -68,6 +81,62 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.HasIndex(e => e.LastModified);
+        });
+
+        modelBuilder.Entity<VantaSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.LastModified);
+        });
+
+        modelBuilder.Entity<VantaSyncLog>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.StartedAt);
+            entity.HasIndex(e => e.SyncType);
+        });
+
+        modelBuilder.Entity<AuditLogEntry>(entity =>
+        {
+            entity.HasKey(e => e.LogId);
+            entity.HasIndex(e => e.Timestamp);
+            entity.HasIndex(e => e.EventType);
+            entity.HasIndex(e => e.Actor);
+        });
+
+        modelBuilder.Entity<RemediationItem>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.ControlId);
+        });
+
+        modelBuilder.Entity<ComplianceSnapshot>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.SnapshotDate);
+            entity.HasIndex(e => e.ControlId);
+        });
+
+        modelBuilder.Entity<SocIncident>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IncidentId).IsUnique();
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.CurrentTier);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.DetectedAt);
+        });
+
+        modelBuilder.Entity<RemediationAttempt>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IncidentId);
+            entity.HasIndex(e => e.Tier);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.AttemptedAt);
         });
     }
 }

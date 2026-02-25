@@ -8,4 +8,5 @@ public interface ICredentialCacheService
     AzureCredentials? GetCredentials(string sessionId);
     void ClearCredentials(string sessionId);
     string? FindSessionByCredentials(AzureCredentials credentials);
+    IEnumerable<string> GetAllSessionIds();
 }

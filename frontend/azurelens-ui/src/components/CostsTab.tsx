@@ -63,18 +63,14 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
   const [resourceStartDate, setResourceStartDate] = useState('');
   const [resourceEndDate, setResourceEndDate] = useState('');
 
-  // Fetch costs on mount - get costs for ALL subscriptions user has access to
+  // Fetch costs based on selected subscription(s)
   useEffect(() => {
     const fetchCosts = async () => {
       setLoading(true);
       setError('');
       try {
-        // Pass empty subscriptionIds array to get ALL subscriptions
-        const allSubsCredentials = {
-          ...credentials,
-          subscriptionIds: [] // Empty array means "get all subscriptions"
-        };
-        const data = await getAzureCosts(allSubsCredentials);
+        // Use credentials with filtered subscriptionIds from parent
+        const data = await getAzureCosts(credentials);
         setCosts(data);
       } catch (err: any) {
         setError(err.response?.data?.error || err.message || 'Failed to fetch costs');
@@ -83,7 +79,7 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
       }
     };
     fetchCosts();
-  }, [credentials]);
+  }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
   // Initialize default date ranges
   useEffect(() => {
@@ -182,7 +178,9 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                 )}
               </Typography>
               <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                Showing all {costs.length} subscription(s)
+                {credentials.subscriptionIds && credentials.subscriptionIds.length > 0
+                  ? `${credentials.subscriptionIds.length} subscription${credentials.subscriptionIds.length > 1 ? 's' : ''} selected`
+                  : 'All subscriptions'}
               </Typography>
             </Box>
           </Box>
@@ -241,8 +239,8 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                             <Typography variant="body2" sx={{ fontWeight: 500 }}>
                               {cost.subscriptionName}
                             </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {cost.subscriptionId.substring(0, 8)}...
+                            <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', fontSize: '0.75rem' }}>
+                              {cost.subscriptionId}
                             </Typography>
                           </TableCell>
                           <TableCell>

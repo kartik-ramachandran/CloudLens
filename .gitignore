@@ -28,3 +28,16 @@ yarn-error.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# SQLite databases
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+
+# Claude AI files
+.claude/
+*.claude
+claude-artifacts/
+.claude-cache/

@@ -80,6 +80,12 @@ public class CredentialCacheService : ICredentialCacheService
         return null;
     }
 
+    public IEnumerable<string> GetAllSessionIds()
+    {
+        var now = DateTime.UtcNow;
+        return _cache.Where(kvp => kvp.Value.ExpiresAt > now).Select(kvp => kvp.Key).ToList();
+    }
+
     private void CleanupExpiredEntries()
     {
         var now = DateTime.UtcNow;

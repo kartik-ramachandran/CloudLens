@@ -19,6 +19,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { AzureCredentials } from '../types';
 import api from '../services/api';
 import JiraSettingsCard from './JiraSettingsCard';
+import VantaSettingsCard from './VantaSettingsCard';
 
 interface SettingsTabProps {
   credentials: AzureCredentials;
@@ -294,7 +295,7 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
             >
               <MenuItem value="OpenAI">OpenAI</MenuItem>
               <MenuItem value="Anthropic">Anthropic (Claude)</MenuItem>
-              <MenuItem value="Bedrock">AWS Bedrock (Coming Soon)</MenuItem>
+              <MenuItem value="Bedrock">AWS Bedrock</MenuItem>
             </Select>
           </FormControl>
 
@@ -397,6 +398,9 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
 
       {/* JIRA Integration Settings */}
       <JiraSettingsCard />
+
+      {/* Vanta Integration Settings */}
+      <VantaSettingsCard credentials={credentials} />
 
       <Card sx={{ mt: 3 }}>
         <CardContent>

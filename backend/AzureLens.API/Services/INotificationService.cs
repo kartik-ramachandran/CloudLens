@@ -8,4 +8,5 @@ public interface INotificationService
     Task<bool> SendTeamsNotificationAsync(string webhookUrl, NotificationRequest notification);
     Task<NotificationSettings?> GetNotificationSettingsAsync();
     Task SaveNotificationSettingsAsync(NotificationSettings settings);
+    Task<bool> SendNotificationAsync(string title, string message, string severity = "info");
 }
