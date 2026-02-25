@@ -86,15 +86,28 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
 
   const handleExport = async (format: 'excel' | 'html') => {
     try {
+      console.log('[Export] Starting export with format:', format, 'credentials:', credentials);
+      setError(''); // Clear previous errors
       const blob = await exportSoc2Report(credentials, format);
+      console.log('[Export] Received blob:', blob?.size, 'bytes, type:', blob?.type);
+      
+      if (!blob || blob.size === 0) {
+        throw new Error('Received empty file from server');
+      }
+      
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `SOC2_Report_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'html'}`;
+      document.body.appendChild(a); // Add to body for better browser support
       a.click();
+      document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      console.log('[Export] Download triggered successfully');
     } catch (e: any) {
-      setError(e.message || 'Export failed');
+      console.error('[Export] Error during export:', e);
+      const errorMessage = e.response?.data?.error || e.message || 'Export failed. Please check the console for details.';
+      setError(errorMessage);
     }
   };
 
@@ -178,10 +191,10 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
 
       {/* Summary KPIs */}
       {controls.length > 0 && (
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent sx={{ textAlign: 'center' }}>
+        <Grid container spacing={2} sx={{ mb: 3 }} alignItems="stretch">
+          <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <CardContent sx={{ textAlign: 'center', flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
                 <Typography variant="h3" sx={{ fontWeight: 700, color: overallPct >= 80 ? '#107c10' : overallPct >= 60 ? '#ff8c00' : '#d13438' }}>
                   {overallPct}%
                 </Typography>
@@ -192,40 +205,35 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={160}>
-                  <PieChart>
-                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={45} outerRadius={70} dataKey="value">
+          <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ flex: 1 }}>
+              <CardContent sx={{ pb: '16px !important', height: '100%', boxSizing: 'border-box' }}>
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart margin={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                    <Pie data={pieData} cx="50%" cy="45%" innerRadius={48} outerRadius={72} dataKey="value" paddingAngle={2}>
                       {pieData.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                     </Pie>
                     <RechartsTooltip />
-                    <Legend iconSize={10} />
+                    <Legend iconSize={10} wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                   </PieChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
           </Grid>
-          <Grid item xs={12} md={4}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Compliant Controls</Typography>
-                  <Typography sx={{ color: '#107c10', fontWeight: 700 }}>{compliant}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Non-Compliant</Typography>
-                  <Typography sx={{ color: '#d13438', fontWeight: 700 }}>{nonCompliant}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                  <Typography variant="body2">Partially Compliant</Typography>
-                  <Typography sx={{ color: '#ff8c00', fontWeight: 700 }}>{partial}</Typography>
-                </Box>
-                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <Typography variant="body2">Open Gaps</Typography>
-                  <Typography sx={{ color: '#d13438', fontWeight: 700 }}>{gaps.length}</Typography>
-                </Box>
+          <Grid item xs={12} md={4} sx={{ display: 'flex' }}>
+            <Card sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+              <CardContent sx={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                {[
+                  { label: 'Compliant Controls',   value: compliant,     color: '#107c10' },
+                  { label: 'Non-Compliant',         value: nonCompliant,  color: '#d13438' },
+                  { label: 'Partially Compliant',   value: partial,       color: '#ff8c00' },
+                  { label: 'Open Gaps',             value: gaps.length,   color: '#d13438' },
+                ].map((row, i) => (
+                  <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: i < 3 ? 1.5 : 0 }}>
+                    <Typography variant="body2">{row.label}</Typography>
+                    <Typography variant="h6" sx={{ fontWeight: 700, color: row.color, fontFamily: 'monospace' }}>{row.value}</Typography>
+                  </Box>
+                ))}
               </CardContent>
             </Card>
           </Grid>

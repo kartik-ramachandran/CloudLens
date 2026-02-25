@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Alert,
-  LinearProgress, Accordion, AccordionSummary, AccordionDetails, List, ListItem, ListItemIcon, ListItemText
+  LinearProgress, Accordion, AccordionSummary, AccordionDetails, List, ListItem, ListItemIcon, ListItemText,
+  Button, CircularProgress,
 } from '@mui/material';
 import LoadingSpinner from './LoadingSpinner';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -66,19 +68,20 @@ const ReadinessAssessment: React.FC<ReadinessAssessmentProps> = ({ credentials }
   const [report, setReport] = useState<Soc2ReadinessReport | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const load = async () => {
+    setLoading(true);
+    try { setReport(await getReadinessAssessment(credentials)); }
+    catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try { setReport(await getReadinessAssessment(credentials)); }
-      catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
     if (credentials.sessionId && credentials.subscriptionIds && credentials.subscriptionIds.length > 0) {
       load();
     }
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
-  if (loading) return <LoadingSpinner message="Assessing SOC2 readiness..." />;
+  if (loading && !report) return <LoadingSpinner message="Assessing SOC2 readiness..." />;
 
   const noSubscription = !credentials.subscriptionIds || credentials.subscriptionIds.length === 0;
   const grouped = report ? groupByCategory(report.checks) : {};
@@ -98,6 +101,14 @@ const ReadinessAssessment: React.FC<ReadinessAssessmentProps> = ({ credentials }
 
   return (
     <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="outlined" size="small"
+          startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+          onClick={load} disabled={loading}
+        >
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </Box>
       {report && (
         <>
           <Box sx={{ display: 'flex', gap: 3, mb: 3, flexWrap: 'wrap' }}>

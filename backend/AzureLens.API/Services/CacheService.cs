@@ -100,6 +100,7 @@ public class CacheService : ICacheService
 
         var cached = await _context.CachedCosts
             .Where(c => subscriptionIds.Contains(c.SubscriptionId) && c.CachedAt > cutoffTime)
+            .OrderByDescending(c => c.CachedAt)  // Get most recent first
             .ToListAsync();
 
         if (!cached.Any())
@@ -107,16 +108,20 @@ public class CacheService : ICacheService
 
         _logger.LogInformation($"Retrieved {cached.Count} cached costs for {subscriptionIds.Count} subscriptions");
         
-        return cached.Select(c => new CostData
-        {
-            SubscriptionId = c.SubscriptionId,
-            SubscriptionName = c.SubscriptionName,
-            TotalCost = c.TotalCost,
-            Currency = c.Currency,
-            StartDate = c.StartDate,
-            EndDate = c.EndDate,
-            CostsByService = JsonSerializer.Deserialize<List<CostByService>>(c.CostsByServiceJson) ?? new List<CostByService>()
-        }).ToList();
+        // Group by subscription ID and take only the most recent entry per subscription
+        return cached
+            .GroupBy(c => c.SubscriptionId)
+            .Select(g => g.First())  // First is most recent due to OrderByDescending
+            .Select(c => new CostData
+            {
+                SubscriptionId = c.SubscriptionId,
+                SubscriptionName = c.SubscriptionName,
+                TotalCost = c.TotalCost,
+                Currency = c.Currency,
+                StartDate = c.StartDate,
+                EndDate = c.EndDate,
+                CostsByService = JsonSerializer.Deserialize<List<CostByService>>(c.CostsByServiceJson) ?? new List<CostByService>()
+            }).ToList();
     }
 
     public async Task CacheCostsAsync(List<CostData> costs)

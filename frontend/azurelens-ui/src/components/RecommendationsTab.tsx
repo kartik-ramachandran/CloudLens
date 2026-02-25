@@ -1,39 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
-  Box,
-  Card,
-  CardContent,
-  Typography,
-  Chip,
-  TextField,
-  InputAdornment,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
-  TablePagination,
-  CircularProgress,
-  Alert,
+  Box, Card, CardContent, Typography, Chip,
+  TextField, InputAdornment, Accordion, AccordionSummary,
+  AccordionDetails, TablePagination, CircularProgress, Alert,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
+  Button,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
 import InfoIcon from '@mui/icons-material/Info';
-import { SecurityRecommendation } from '../types';
+import SecurityIcon from '@mui/icons-material/Security';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import { AzureCredentials, SecurityRecommendation } from '../types';
+import { getSecurityRecommendations } from '../services/api';
+import { DS, SectionHeader, StyledHeadCell, styledRowSx, EmptyState } from '../theme/designSystem';
 
 interface RecommendationsTabProps {
-  recommendations: SecurityRecommendation[];
+  credentials: AzureCredentials;
   compact?: boolean;
-  loading?: boolean;
-  error?: string;
 }
 
-const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ recommendations, compact = false, loading = false, error = '' }) => {
+const SEVERITY_COLOR: Record<string, string> = { high: '#d13438', medium: '#ff8c00', low: '#107c10' };
+
+const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
+  credentials, compact = false,
+}) => {
+  const [recommendations, setRecommendations] = useState<SecurityRecommendation[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
 
-  const filteredRecommendations = recommendations.filter((rec) =>
+  const credentialsRef = useRef(credentials);
+  credentialsRef.current = credentials;
+
+  const fetchRecommendations = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await getSecurityRecommendations(credentialsRef.current);
+      setRecommendations(data);
+    } catch (err: any) {
+      setError(err.response?.data?.error || 'Failed to load security recommendations.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    fetchRecommendations();
+  }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
+
+  const filteredRecommendations = recommendations.filter(rec =>
     rec.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
     rec.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
     rec.category.toLowerCase().includes(searchTerm.toLowerCase())
@@ -41,175 +63,146 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({ recommendations
 
   const displayRecommendations = filteredRecommendations.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
-  const handleChangePage = (event: unknown, newPage: number) => {
-    setPage(newPage);
-  };
-
-  const handleChangeRowsPerPage = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setRowsPerPage(parseInt(event.target.value, 10));
-    setPage(0);
-  };
-
   const getSeverityIcon = (severity: string) => {
     switch (severity.toLowerCase()) {
-      case 'high':
-        return <ErrorIcon color="error" />;
-      case 'medium':
-        return <WarningIcon color="warning" />;
-      default:
-        return <InfoIcon color="info" />;
-    }
-  };
-
-  const getSeverityColor = (severity: string): "error" | "warning" | "info" | "default" => {
-    switch (severity.toLowerCase()) {
-      case 'high':
-        return 'error';
-      case 'medium':
-        return 'warning';
-      default:
-        return 'info';
+      case 'high':   return <ErrorIcon sx={{ color: SEVERITY_COLOR.high }} />;
+      case 'medium': return <WarningIcon sx={{ color: SEVERITY_COLOR.medium }} />;
+      default:       return <InfoIcon sx={{ color: SEVERITY_COLOR.low }} />;
     }
   };
 
   return (
-    <Card sx={{ height: compact ? 'auto' : 'auto' }}>
-      <CardContent>
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" sx={{ fontWeight: 600 }}>
+    <Card>
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <SectionHeader icon={<SecurityIcon />}>
             Recommendations
-            {loading && (
-              <CircularProgress size={16} sx={{ ml: 2, verticalAlign: 'middle' }} />
+          </SectionHeader>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+            {!compact && (
+              <TextField
+                size="small" variant="outlined" placeholder="Search recommendations…"
+                value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
+                sx={{ width: 280 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <SearchIcon sx={{ color: 'text.disabled', fontSize: 18 }} />
+                    </InputAdornment>
+                  ),
+                }}
+              />
             )}
-          </Typography>
-          {!compact && (
-            <TextField
-              size="small"
+            <Button
               variant="outlined"
-              placeholder="Search recommendations..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              sx={{ width: 300 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <SearchIcon />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          )}
+              size="small"
+              startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+              onClick={fetchRecommendations}
+              disabled={loading}
+            >
+              {loading ? 'Loading…' : 'Refresh'}
+            </Button>
+          </Box>
         </Box>
 
-        {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
         {displayRecommendations.length === 0 ? (
-          <Typography color="text.secondary" align="center" sx={{ py: 4 }}>
-            {loading 
-              ? 'Loading recommendations...'
-              : recommendations.length === 0 
-                ? 'No security recommendations found. This could mean your resources are secure, or the Security Center is still analyzing your environment.'
-                : 'No recommendations match your search criteria.'
-            }
-          </Typography>
+          <EmptyState
+            icon={<SecurityIcon />}
+            title={loading ? 'Loading recommendations…' : recommendations.length === 0 ? 'No security recommendations found' : 'No recommendations match your search'}
+            subtitle={!loading && recommendations.length === 0 ? 'Your resources may be secure, or Security Center is still analyzing your environment.' : undefined}
+          />
         ) : compact ? (
-          <Box sx={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid #e0e0e0' }}>
-                  <th style={{ textAlign: 'left', padding: '12px 8px', color: '#7f8c8d', fontWeight: 600, fontSize: '0.875rem' }}>Recommendation</th>
-                  <th style={{ textAlign: 'left', padding: '12px 8px', color: '#7f8c8d', fontWeight: 600, fontSize: '0.875rem' }}>Category</th>
-                  <th style={{ textAlign: 'left', padding: '12px 8px', color: '#7f8c8d', fontWeight: 600, fontSize: '0.875rem' }}>Impact</th>
-                  <th style={{ textAlign: 'right', padding: '12px 8px', color: '#7f8c8d', fontWeight: 600, fontSize: '0.875rem' }}>Resources</th>
-                </tr>
-              </thead>
-              <tbody>
-                {displayRecommendations.map((rec, index) => (
-                  <tr key={rec.id} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: index % 2 === 0 ? '#fafafa' : 'white' }}>
-                    <td style={{ padding: '12px 8px' }}>
-                      <Typography variant="body2" sx={{ fontWeight: 500 }}>{rec.displayName}</Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                        {rec.description.substring(0, 80)}{rec.description.length > 80 ? '...' : ''}
+          /* Compact mode: MUI Table */
+          <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <StyledHeadCell>Recommendation</StyledHeadCell>
+                  <StyledHeadCell>Category</StyledHeadCell>
+                  <StyledHeadCell align="center">Severity</StyledHeadCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {displayRecommendations.map((rec) => (
+                  <TableRow key={rec.id} sx={styledRowSx}>
+                    <TableCell sx={{ py: 1.5 }}>
+                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>{rec.displayName}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {rec.description.length > 80 ? rec.description.substring(0, 80) + '…' : rec.description}
                       </Typography>
-                    </td>
-                    <td style={{ padding: '12px 8px' }}>
-                      <Chip label={rec.category} size="small" sx={{ fontSize: '0.75rem' }} />
-                    </td>
-                    <td style={{ padding: '12px 8px' }}>
-                      <Chip 
-                        label={rec.severity} 
-                        size="small" 
-                        color={getSeverityColor(rec.severity)}
-                        sx={{ fontSize: '0.75rem' }}
+                    </TableCell>
+                    <TableCell sx={{ py: 1.5 }}>
+                      <Chip label={rec.category} size="small" variant="outlined" sx={{ fontSize: '0.68rem' }} />
+                    </TableCell>
+                    <TableCell align="center" sx={{ py: 1.5 }}>
+                      <Chip
+                        label={rec.severity} size="small"
+                        sx={{ bgcolor: SEVERITY_COLOR[rec.severity.toLowerCase()] || DS.accent, color: 'white', fontWeight: 600, fontSize: '0.68rem' }}
                       />
-                    </td>
-                    <td style={{ padding: '12px 8px', textAlign: 'right' }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>1</Typography>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </Box>
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : (
+          /* Full mode: Accordions */
           <Box>
-            {displayRecommendations.map((rec) => (
-              <Accordion key={rec.id} sx={{ mb: 1 }}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            {displayRecommendations.map(rec => (
+              <Accordion key={rec.id} sx={{
+                mb: 1, border: DS.border, borderRadius: '8px !important',
+                background: DS.gradSubtle,
+                '&:before': { display: 'none' },
+                '&.Mui-expanded': { boxShadow: DS.shadow },
+              }}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon sx={{ color: DS.accent }} />}>
                   <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', gap: 2 }}>
                     {getSeverityIcon(rec.severity)}
                     <Box sx={{ flexGrow: 1 }}>
-                      <Typography variant="subtitle1">{rec.displayName}</Typography>
-                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
-                        <Chip 
-                          label={rec.severity} 
-                          size="small" 
-                          color={getSeverityColor(rec.severity)}
+                      <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>{rec.displayName}</Typography>
+                      <Box sx={{ display: 'flex', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+                        <Chip
+                          label={rec.severity} size="small"
+                          sx={{ bgcolor: SEVERITY_COLOR[rec.severity.toLowerCase()] || DS.accent, color: 'white', fontWeight: 600, fontSize: '0.65rem', height: 20 }}
                         />
-                        <Chip label={rec.category} size="small" variant="outlined" />
-                        <Chip label={rec.status} size="small" />
+                        <Chip label={rec.category} size="small" variant="outlined" sx={{ fontSize: '0.65rem', height: 20 }} />
+                        <Chip label={rec.status} size="small" sx={{ background: DS.gradSubtle, border: DS.border, fontSize: '0.65rem', height: 20 }} />
                       </Box>
                     </Box>
                   </Box>
                 </AccordionSummary>
-                <AccordionDetails>
-                  <Typography variant="body2" paragraph>
-                    <strong>Description:</strong> {rec.description}
-                  </Typography>
-
-                  <Typography variant="body2" color="text.secondary" gutterBottom>
-                    <strong>Resource:</strong> {rec.resourceId}
-                  </Typography>
-
-                  {rec.remediationSteps && (
-                    <Box sx={{ mt: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
-                      <Typography variant="body2" gutterBottom>
-                        <strong>Remediation Steps:</strong>
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary">
-                        {rec.remediationSteps}
-                      </Typography>
-                    </Box>
-                  )}
+                <AccordionDetails sx={{ pt: 0 }}>
+                  <Box sx={{ p: 2, borderRadius: 2, background: 'rgba(0,0,0,0.03)', border: '1px solid', borderColor: 'divider' }}>
+                    <Typography variant="body2" sx={{ mb: 1.5 }}>
+                      <strong>Description:</strong> {rec.description}
+                    </Typography>
+                    <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', display: 'block', mb: rec.remediationSteps ? 1.5 : 0 }}>
+                      <strong>Resource:</strong> {rec.resourceId}
+                    </Typography>
+                    {rec.remediationSteps && (
+                      <Box sx={{ mt: 1.5, p: 1.5, bgcolor: 'rgba(102,126,234,0.06)', borderRadius: 2, borderLeft: `3px solid ${DS.accent}` }}>
+                        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block', mb: 0.5, color: DS.accent }}>
+                          REMEDIATION STEPS
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">{rec.remediationSteps}</Typography>
+                      </Box>
+                    )}
+                  </Box>
                 </AccordionDetails>
               </Accordion>
             ))}
           </Box>
         )}
+
         {filteredRecommendations.length > 0 && (
           <TablePagination
-            component="div"
-            count={filteredRecommendations.length}
-            page={page}
-            onPageChange={handleChangePage}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-            rowsPerPageOptions={[5, 10, 25, 50, 100]}
-            sx={{ borderTop: '1px solid #e0e0e0', mt: 2 }}
+            component="div" count={filteredRecommendations.length} page={page}
+            onPageChange={(_, p) => setPage(p)} rowsPerPage={rowsPerPage}
+            onRowsPerPageChange={e => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+            rowsPerPageOptions={[10, 25, 50, 100, 250, 500]}
+            sx={{ borderTop: '1px solid', borderColor: 'divider', mt: 1 }}
           />
         )}
       </CardContent>

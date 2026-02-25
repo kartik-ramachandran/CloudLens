@@ -106,14 +106,14 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
       {/* Top Header */}
       <Box
         sx={{
-          bgcolor: '#0066CC',
+          background: 'linear-gradient(135deg, #1a1464 0%, #0066CC 60%, #0099bc 100%)',
           color: 'white',
           px: 3,
           py: 1.5,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+          boxShadow: '0 2px 16px rgba(0,0,0,0.2)',
         }}
       >
         {/* Logo */}
@@ -210,7 +210,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
               pt: 2, 
               pb: 1,
               bgcolor: 'background.default',
-              borderBottom: '1px solid #e0e0e0'
+              borderBottom: '1px solid rgba(102,126,234,0.14)'
             }}
           >
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -283,7 +283,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
             <MonitoringTab credentials={activeCredentials} />
           )}
           {activePage === 'recommendations' && (
-            <RecommendationsTab recommendations={[]} />
+            <RecommendationsTab credentials={activeCredentials} />
           )}
           {activePage === 'compliance' && (
             <Soc2ComplianceDashboard credentials={activeCredentials} />

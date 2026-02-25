@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, Alert, Tabs, Tab, IconButton, Tooltip, CircularProgress, Grid
+  TableContainer, TableHead, TableRow, Paper, Alert, Tabs, Tab, IconButton, Tooltip, CircularProgress, Grid, Button,
 } from '@mui/material';
 import RouterIcon from '@mui/icons-material/Router';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import PublicIcon from '@mui/icons-material/Public';
 import PsychologyIcon from '@mui/icons-material/Psychology';
 import LightbulbIcon from '@mui/icons-material/Lightbulb';
@@ -24,13 +25,14 @@ const NetworkSecurityReport: React.FC<NetworkSecurityReportProps> = ({ credentia
   const [loadingNsgAi, setLoadingNsgAi] = useState<number | null>(null);
   const [aiNsgOpen, setAiNsgOpen] = useState<number | null>(null);
 
+  const load = async () => {
+    setLoading(true);
+    try { setReport(await getNetworkSecurityReport(credentials)); }
+    catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try { setReport(await getNetworkSecurityReport(credentials)); }
-      catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
     if (credentials.sessionId) load();
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
@@ -65,7 +67,7 @@ const NetworkSecurityReport: React.FC<NetworkSecurityReportProps> = ({ credentia
     }
   };
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
+  if (loading && !report) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
 
   return (
     <Box>
@@ -102,10 +104,18 @@ const NetworkSecurityReport: React.FC<NetworkSecurityReportProps> = ({ credentia
 
           <Card>
             <CardContent>
-              <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
-                <Tab label={`Risky NSG Rules (${report.riskyNsgRules.length})`} icon={<RouterIcon />} iconPosition="start" />
-                <Tab label={`Public IPs (${report.publicIps.length})`} icon={<PublicIcon />} iconPosition="start" />
-              </Tabs>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                <Tabs value={tab} onChange={(_, v) => setTab(v)}>
+                  <Tab label={`Risky NSG Rules (${report.riskyNsgRules.length})`} icon={<RouterIcon />} iconPosition="start" />
+                  <Tab label={`Public IPs (${report.publicIps.length})`} icon={<PublicIcon />} iconPosition="start" />
+                </Tabs>
+                <Button variant="outlined" size="small"
+                  startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+                  onClick={load} disabled={loading}
+                >
+                  {loading ? 'Loading…' : 'Refresh'}
+                </Button>
+              </Box>
 
               {tab === 0 && (
                 <TableContainer component={Paper} variant="outlined">

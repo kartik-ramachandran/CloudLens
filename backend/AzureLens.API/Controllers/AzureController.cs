@@ -106,10 +106,14 @@ public class AzureController : ControllerBase
                 return Unauthorized(new { error = "Session expired. Please reconnect." });
             }
 
+            // Deduplicate and set subscription IDs
+            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
+            credentials.SubscriptionIds = subscriptionIds;
+
             // Try to get from cache first (unless forceRefresh is true)
             if (!forceRefresh)
             {
-                var cachedResources = await _cacheService.GetCachedResourcesAsync(request.SubscriptionIds ?? new List<string>());
+                var cachedResources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
                 
                 if (cachedResources != null && cachedResources.Any())
                 {
@@ -149,10 +153,14 @@ public class AzureController : ControllerBase
                 return Unauthorized(new { error = "Session expired. Please reconnect." });
             }
 
+            // Deduplicate and set subscription IDs
+            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
+            credentials.SubscriptionIds = subscriptionIds;
+
             // Try to get from cache first (unless forceRefresh is true)
             if (!forceRefresh)
             {
-                var cachedCosts = await _cacheService.GetCachedCostsAsync(request.SubscriptionIds ?? new List<string>());
+                var cachedCosts = await _cacheService.GetCachedCostsAsync(subscriptionIds);
                 
                 if (cachedCosts != null && cachedCosts.Any())
                 {
@@ -297,14 +305,22 @@ public class AzureController : ControllerBase
     {
         try
         {
-            var subscriptionIds = request.SubscriptionIds ?? new List<string>();
-            
+            // Get credentials from cache
+            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            if (credentials == null)
+            {
+                return Unauthorized(new { error = "Session expired. Please reconnect." });
+            }
+
+            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
+            credentials.SubscriptionIds = subscriptionIds;
+
             if (!subscriptionIds.Any())
             {
                 return BadRequest(new { error = "At least one subscription ID is required" });
             }
 
-            // Get resources and costs from cache or Azure
+            // Get resources from cache or fetch from Azure
             var cachedResources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
             List<AzureResource> resources;
             
@@ -315,10 +331,13 @@ public class AzureController : ControllerBase
             }
             else
             {
-                _logger.LogWarning("No cached resources found for AI analysis");
-                return BadRequest(new { error = "No cached data available. Please load resources first from the Resources tab." });
+                _logger.LogInformation("No cached resources found - fetching from Azure");
+                resources = await _azureService.GetResourcesAsync(credentials);
+                await _cacheService.CacheResourcesAsync(resources);
+                _logger.LogInformation($"Fetched and cached {resources.Count} resources for AI analysis");
             }
 
+            // Get costs from cache or fetch from Azure
             var cachedCosts = await _cacheService.GetCachedCostsAsync(subscriptionIds);
             List<CostData> costs;
             
@@ -329,8 +348,10 @@ public class AzureController : ControllerBase
             }
             else
             {
-                _logger.LogWarning("No cached costs found for AI analysis");
-                return BadRequest(new { error = "No cached cost data available. Please load costs first from the Costs tab." });
+                _logger.LogInformation("No cached costs found - fetching from Azure");
+                costs = await _azureService.GetCostsAsync(credentials);
+                await _cacheService.CacheCostsAsync(costs);
+                _logger.LogInformation($"Fetched and cached costs for {costs.Count} subscriptions for AI analysis");
             }
 
             // Build context for AI analysis from cached/fresh data

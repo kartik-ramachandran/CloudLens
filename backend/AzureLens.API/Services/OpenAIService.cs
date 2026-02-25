@@ -12,9 +12,14 @@ public class OpenAIService : IAIService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAISettingsService _aiSettingsService;
 
+    private static readonly JsonSerializerOptions _jsonOptions = new JsonSerializerOptions
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
     public OpenAIService(
-        IConfiguration configuration, 
-        ILogger<OpenAIService> logger, 
+        IConfiguration configuration,
+        ILogger<OpenAIService> logger,
         IHttpClientFactory httpClientFactory,
         IAISettingsService aiSettingsService)
     {
@@ -87,12 +92,12 @@ public class OpenAIService : IAIService
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent);
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
 
         if (apiResponse?.Choices != null && apiResponse.Choices.Length > 0)
         {
             var messageContent = apiResponse.Choices[0].Message.Content;
-            var recommendationsWrapper = JsonSerializer.Deserialize<RecommendationsWrapper>(messageContent);
+            var recommendationsWrapper = JsonSerializer.Deserialize<RecommendationsWrapper>(messageContent, _jsonOptions);
             return recommendationsWrapper?.Recommendations ?? new List<AIRecommendation>();
         }
 
@@ -151,7 +156,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
             if (firstContent.TryGetProperty("text", out var textElement))
             {
                 var text = textElement.GetString() ?? "";
-                var recommendationsWrapper = JsonSerializer.Deserialize<RecommendationsWrapper>(text);
+                var recommendationsWrapper = JsonSerializer.Deserialize<RecommendationsWrapper>(text, _jsonOptions);
                 return recommendationsWrapper?.Recommendations ?? new List<AIRecommendation>();
             }
         }
@@ -284,7 +289,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
 
                 if (!response.IsSuccessStatusCode) return $"SOC2 compliance: {overallPercent:F1}%";
                 var responseContent = await response.Content.ReadAsStringAsync();
-                var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent);
+                var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
                 return apiResponse?.Choices?.FirstOrDefault()?.Message.Content ?? $"SOC2 compliance: {overallPercent:F1}%";
             }
             else if (settings.Provider.ToLower() == "anthropic")
@@ -425,8 +430,8 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
                     content = prompt
                 }
             },
-            max_tokens = settings.MaxTokens,
-            temperature = 0.3, // Lower temperature for more precise technical guidance
+            max_tokens = Math.Max(settings.MaxTokens, 4096),
+            temperature = 0.3,
             response_format = new { type = "json_object" }
         };
 
@@ -438,13 +443,21 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync();
-        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent);
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
 
         if (apiResponse?.Choices != null && apiResponse.Choices.Length > 0)
         {
             var messageContent = apiResponse.Choices[0].Message.Content;
-            var suggestionsWrapper = JsonSerializer.Deserialize<RemediationSuggestionsWrapper>(messageContent);
-            return suggestionsWrapper?.Suggestions ?? new List<RemediationSuggestion>();
+            try
+            {
+                var suggestionsWrapper = JsonSerializer.Deserialize<RemediationSuggestionsWrapper>(messageContent, _jsonOptions);
+                return suggestionsWrapper?.Suggestions ?? new List<RemediationSuggestion>();
+            }
+            catch (JsonException)
+            {
+                _logger.LogWarning("Remediation JSON was truncated; extracting partial suggestions.");
+                return ParsePartialSuggestions(messageContent);
+            }
         }
 
         return new List<RemediationSuggestion>();
@@ -510,8 +523,16 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
             if (firstContent.TryGetProperty("text", out var textElement))
             {
                 var text = textElement.GetString() ?? "";
-                var suggestionsWrapper = JsonSerializer.Deserialize<RemediationSuggestionsWrapper>(text);
-                return suggestionsWrapper?.Suggestions ?? new List<RemediationSuggestion>();
+                try
+                {
+                    var suggestionsWrapper = JsonSerializer.Deserialize<RemediationSuggestionsWrapper>(text, _jsonOptions);
+                    return suggestionsWrapper?.Suggestions ?? new List<RemediationSuggestion>();
+                }
+                catch (JsonException)
+                {
+                    _logger.LogWarning("Remediation JSON was truncated; extracting partial suggestions.");
+                    return ParsePartialSuggestions(text);
+                }
             }
         }
 
@@ -532,7 +553,7 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
         sb.AppendLine();
         sb.AppendLine("Issues requiring remediation:");
         
-        foreach (var issue in context.Issues.Take(10))
+        foreach (var issue in context.Issues.Take(5))
         {
             sb.AppendLine($"\n- Control: {issue.ControlId} - {issue.ControlName}");
             sb.AppendLine($"  Severity: {issue.Severity}");
@@ -574,6 +595,67 @@ Respond ONLY with valid JSON (no markdown, no code blocks):
 }");
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Extracts complete RemediationSuggestion objects from a potentially truncated JSON string.
+    /// Used as a fallback when the LLM response is cut off by the token limit.
+    /// </summary>
+    private List<RemediationSuggestion> ParsePartialSuggestions(string json)
+    {
+        var result = new List<RemediationSuggestion>();
+        try
+        {
+            var markerIdx = json.IndexOf("\"suggestions\"", StringComparison.OrdinalIgnoreCase);
+            if (markerIdx < 0) return result;
+
+            var arrayStart = json.IndexOf('[', markerIdx);
+            if (arrayStart < 0) return result;
+
+            int depth = 0;
+            bool inString = false;
+            bool escape = false;
+            int objStart = -1;
+
+            for (int i = arrayStart + 1; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (escape) { escape = false; continue; }
+                if (c == '\\' && inString) { escape = true; continue; }
+                if (c == '"') { inString = !inString; continue; }
+                if (inString) continue;
+
+                if (c == '{')
+                {
+                    if (depth == 0) objStart = i;
+                    depth++;
+                }
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0 && objStart >= 0)
+                    {
+                        var objJson = json.Substring(objStart, i - objStart + 1);
+                        try
+                        {
+                            var suggestion = JsonSerializer.Deserialize<RemediationSuggestion>(objJson, _jsonOptions);
+                            if (suggestion != null) result.Add(suggestion);
+                        }
+                        catch { /* skip malformed object */ }
+                        objStart = -1;
+                    }
+                }
+                else if (c == ']' && depth == 0)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to parse partial suggestions from truncated JSON.");
+        }
+        return result;
     }
 }
 

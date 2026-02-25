@@ -168,23 +168,29 @@ public class AzureService : IAzureService
             var credential = GetCredential(credentials);
             var costDataList = new List<CostData>();
 
-            // Get the list of subscription IDs to query
-            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
+            // Get the list of subscription IDs to query and deduplicate
+            var subscriptionIds = (credentials.SubscriptionIds ?? new List<string>()).Distinct().ToList();
             
             // If no specific subscriptions requested, get all available subscriptions
             if (!subscriptionIds.Any())
             {
                 var allSubs = await GetSubscriptionsAsync(credentials);
-                subscriptionIds = allSubs.Select(s => s.SubscriptionId).ToList();
+                subscriptionIds = allSubs.Select(s => s.SubscriptionId).Distinct().ToList();
             }
 
             _logger.LogInformation($"Fetching costs for {subscriptionIds.Count} subscription(s)");
 
+            // Get subscription names
+            var allSubscriptions = await GetSubscriptionsAsync(credentials);
+            var subscriptionLookup = allSubscriptions.ToDictionary(s => s.SubscriptionId, s => s.DisplayName);
+
             // Query each requested subscription directly
             foreach (var subscriptionId in subscriptionIds)
             {
-                // We don't have subscription names in credentials model, will get from API call
-                var subscriptionName = subscriptionId.Substring(0, Math.Min(8, subscriptionId.Length)) + "...";
+                // Get subscription name from lookup
+                var subscriptionName = subscriptionLookup.ContainsKey(subscriptionId) 
+                    ? subscriptionLookup[subscriptionId] 
+                    : "Unknown Subscription";
 
                 try
                 {
@@ -359,7 +365,11 @@ public class AzureService : IAzureService
                     }
                 }
 
-            return costDataList;
+            // Deduplicate by subscription ID (keep first occurrence)
+            return costDataList
+                .GroupBy(c => c.SubscriptionId)
+                .Select(g => g.First())
+                .ToList();
         }
         catch (Exception ex)
         {

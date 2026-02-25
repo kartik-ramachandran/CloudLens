@@ -2,11 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Alert,
-  Tabs, Tab, TextField, InputAdornment
+  Tabs, Tab, TextField, InputAdornment, Button, CircularProgress,
 } from '@mui/material';
 import ManageAccountsIcon from '@mui/icons-material/ManageAccounts';
 import SearchIcon from '@mui/icons-material/Search';
 import WarningIcon from '@mui/icons-material/Warning';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import LoadingSpinner from './LoadingSpinner';
 import { AzureCredentials } from '../types';
 import { getAccessReviewSummary } from '../services/api';
@@ -27,17 +28,18 @@ const AccessReviewDashboard: React.FC<AccessReviewDashboardProps> = ({ credentia
   const [tab, setTab] = useState(0);
   const [search, setSearch] = useState('');
 
+  const load = async () => {
+    setLoading(true);
+    try { setSummary(await getAccessReviewSummary(credentials)); }
+    catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try { setSummary(await getAccessReviewSummary(credentials)); }
-      catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
     if (credentials.sessionId) load();
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
-  if (loading) return <LoadingSpinner message="Loading access reviews..." />;
+  if (loading && !summary) return <LoadingSpinner message="Loading access reviews..." />;
 
   const filter = (name: string) => !search || name.toLowerCase().includes(search.toLowerCase());
 
@@ -80,10 +82,18 @@ const AccessReviewDashboard: React.FC<AccessReviewDashboardProps> = ({ credentia
                   <ManageAccountsIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
                   Access Review
                 </Typography>
-                <TextField size="small" placeholder="Search by name or role..."
-                  value={search} onChange={e => setSearch(e.target.value)}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <TextField size="small" placeholder="Search by name or role..."
+                    value={search} onChange={e => setSearch(e.target.value)}
+                    InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon /></InputAdornment> }}
+                  />
+                  <Button variant="outlined" size="small"
+                    startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+                    onClick={load} disabled={loading}
+                  >
+                    {loading ? 'Loading…' : 'Refresh'}
+                  </Button>
+                </Box>
               </Box>
               <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
                 <Tab label={`All Assignments (${summary.totalAssignments})`} />

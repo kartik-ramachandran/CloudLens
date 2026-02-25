@@ -62,7 +62,11 @@ const MonitoringTab: React.FC<MonitoringTabProps> = ({ credentials }) => {
   return (
     <Box>
       <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-        <Tabs value={tabValue} onChange={handleTabChange} aria-label="monitoring tabs">
+        <Tabs value={tabValue} onChange={handleTabChange} aria-label="monitoring tabs" sx={{
+          '& .MuiTab-root': { fontWeight: 600, textTransform: 'none', fontSize: '0.875rem' },
+          '& .Mui-selected': { color: '#667eea !important' },
+          '& .MuiTabs-indicator': { background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', height: 3, borderRadius: '3px 3px 0 0' },
+        }}>
           <Tab label="Secure Scores" />
           <Tab label="Alert Rules" />
           <Tab label="AKS Services" />

@@ -33,17 +33,21 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var wastedTask = GetWastedResourcesAsync(credentials);
+            // Fetch shared data once to avoid hitting the Azure Cost Management API
+            // multiple times in parallel (which causes rate-limit failures and $0 results).
+            var resources = await _azureService.GetResourcesAsync(credentials);
+            var costs = await _azureService.GetCostsAsync(credentials);
+
+            // Now run advisor + tag compliance in parallel (they don't use Cost Management API)
             var advisorTask = GetAdvisorRecommendationsAsync(credentials, "Cost");
             var tagTask = GetTagComplianceAsync(credentials);
-            var anomalyTask = DetectCostAnomaliesAsync(credentials);
+            await Task.WhenAll(advisorTask, tagTask);
 
-            await Task.WhenAll(wastedTask, advisorTask, tagTask, anomalyTask);
-
-            var wasted = await wastedTask;
             var advisor = await advisorTask;
             var tags = await tagTask;
-            var anomalies = await anomalyTask;
+
+            var wasted = ComputeWastedResources(resources, costs);
+            var anomalies = ComputeCostAnomalies(costs);
 
             var totalWaste = wasted.Sum(w => w.EstimatedMonthlyCost);
             var advisorSavings = advisor.Sum(a => (a.AnnualSavingsAmount ?? 0) / 12);
@@ -74,42 +78,46 @@ public class FinOpsService : IFinOpsService
         {
             var resources = await _azureService.GetResourcesAsync(credentials);
             var costs = await _azureService.GetCostsAsync(credentials);
-            var wastedList = new List<WastedResource>();
-
-            // Build cost lookup by subscription
-            var costBySubscription = costs.ToDictionary(c => c.SubscriptionId, c => c.TotalCost);
-
-            foreach (var resource in resources)
-            {
-                var wasteReason = DetectWasteReason(resource);
-                if (wasteReason != null)
-                {
-                    var subscriptionCost = costBySubscription.GetValueOrDefault(resource.SubscriptionId, 0);
-                    // Estimate resource cost as a fraction of subscription cost (rough heuristic)
-                    var estimatedCost = EstimateResourceCost(resource, (double)subscriptionCost);
-
-                    wastedList.Add(new WastedResource
-                    {
-                        ResourceId = resource.Id,
-                        ResourceName = resource.Name,
-                        ResourceType = resource.Type,
-                        ResourceGroup = resource.ResourceGroup,
-                        SubscriptionId = resource.SubscriptionId,
-                        WasteReason = wasteReason,
-                        EstimatedMonthlyCost = estimatedCost,
-                        Recommendation = GetWasteRecommendation(wasteReason, resource.Type),
-                        Severity = GetWasteSeverity(estimatedCost)
-                    });
-                }
-            }
-
-            return wastedList.OrderByDescending(w => w.EstimatedMonthlyCost).ToList();
+            return ComputeWastedResources(resources, costs);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error detecting wasted resources");
             return new List<WastedResource>();
         }
+    }
+
+    private List<WastedResource> ComputeWastedResources(List<AzureResource> resources, List<CostData> costs)
+    {
+        // Build cost lookup by subscription — normalise IDs to bare GUIDs for reliable matching
+        var costBySubscription = costs.ToDictionary(
+            c => NormaliseSubId(c.SubscriptionId),
+            c => c.TotalCost);
+
+        var wastedList = new List<WastedResource>();
+        foreach (var resource in resources)
+        {
+            var wasteReason = DetectWasteReason(resource);
+            if (wasteReason == null) continue;
+
+            var subscriptionCost = costBySubscription.GetValueOrDefault(NormaliseSubId(resource.SubscriptionId), 0);
+            var estimatedCost = EstimateResourceCost(resource, (double)subscriptionCost);
+
+            wastedList.Add(new WastedResource
+            {
+                ResourceId = resource.Id,
+                ResourceName = resource.Name,
+                ResourceType = resource.Type,
+                ResourceGroup = resource.ResourceGroup,
+                SubscriptionId = resource.SubscriptionId,
+                WasteReason = wasteReason,
+                EstimatedMonthlyCost = estimatedCost,
+                Recommendation = GetWasteRecommendation(wasteReason, resource.Type),
+                Severity = GetWasteSeverity(estimatedCost)
+            });
+        }
+
+        return wastedList.OrderByDescending(w => w.EstimatedMonthlyCost).ToList();
     }
 
     public async Task<List<AdvisorRecommendation>> GetAdvisorRecommendationsAsync(AzureCredentials credentials, string? category = null)
@@ -203,41 +211,8 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var anomalies = new List<CostAnomaly>();
             var costs = await _azureService.GetCostsAsync(credentials);
-
-            foreach (var cost in costs)
-            {
-                if (cost.CostsByService == null) continue;
-
-                // Detect services with unusually high costs (simple heuristic: > 2x average per service)
-                var avgCost = cost.CostsByService.Average(s => s.Cost);
-                var stdDev = CalculateStdDev(cost.CostsByService.Select(s => (double)s.Cost).ToList());
-
-                foreach (var service in cost.CostsByService)
-                {
-                    var zScore = stdDev > 0 ? ((double)service.Cost - (double)avgCost) / stdDev : 0;
-                    if (zScore > 2.0 && service.Cost > avgCost * 2)
-                    {
-                        anomalies.Add(new CostAnomaly
-                        {
-                            SubscriptionId = cost.SubscriptionId,
-                            SubscriptionName = cost.SubscriptionName,
-                            ServiceName = service.ServiceName,
-                            DetectedDate = DateTime.UtcNow,
-                            ExpectedCost = avgCost,
-                            ActualCost = service.Cost,
-                            CostDelta = service.Cost - avgCost,
-                            PercentageIncrease = avgCost > 0 ? (double)((service.Cost - avgCost) / avgCost * 100) : 0,
-                            Severity = zScore > 3 ? "High" : "Medium",
-                            PossibleCause = $"{service.ServiceName} spend is significantly above the average service cost of ${avgCost:F2}. Investigate recent deployments or scaling events.",
-                            Currency = cost.Currency
-                        });
-                    }
-                }
-            }
-
-            return anomalies.OrderByDescending(a => a.PercentageIncrease).ToList();
+            return ComputeCostAnomalies(costs);
         }
         catch (Exception ex)
         {
@@ -246,10 +221,48 @@ public class FinOpsService : IFinOpsService
         }
     }
 
+    private List<CostAnomaly> ComputeCostAnomalies(List<CostData> costs)
+    {
+        var anomalies = new List<CostAnomaly>();
+
+        foreach (var cost in costs)
+        {
+            if (cost.CostsByService == null || cost.CostsByService.Count < 2) continue;
+
+            var avgCost = cost.CostsByService.Average(s => s.Cost);
+            var stdDev = CalculateStdDev(cost.CostsByService.Select(s => (double)s.Cost).ToList());
+
+            foreach (var service in cost.CostsByService)
+            {
+                var zScore = stdDev > 0 ? ((double)service.Cost - (double)avgCost) / stdDev : 0;
+                if (zScore > 2.0 && service.Cost > avgCost * 2)
+                {
+                    anomalies.Add(new CostAnomaly
+                    {
+                        SubscriptionId = cost.SubscriptionId,
+                        SubscriptionName = cost.SubscriptionName,
+                        ServiceName = service.ServiceName,
+                        DetectedDate = DateTime.UtcNow,
+                        ExpectedCost = avgCost,
+                        ActualCost = service.Cost,
+                        CostDelta = service.Cost - avgCost,
+                        PercentageIncrease = avgCost > 0 ? (double)((service.Cost - avgCost) / avgCost * 100) : 0,
+                        Severity = zScore > 3 ? "High" : "Medium",
+                        PossibleCause = $"{service.ServiceName} spend is significantly above the average service cost of ${avgCost:F2}. Investigate recent deployments or scaling events.",
+                        Currency = cost.Currency
+                    });
+                }
+            }
+        }
+
+        return anomalies.OrderByDescending(a => a.PercentageIncrease).ToList();
+    }
+
     public async Task<List<CostForecast>> GetCostForecastAsync(AzureCredentials credentials)
     {
         try
         {
+            // Use MonthlyCosts endpoint for forecast data if available; otherwise fall back to current costs.
             var costs = await _azureService.GetCostsAsync(credentials);
             var forecasts = new List<CostForecast>();
 
@@ -481,13 +494,25 @@ public class FinOpsService : IFinOpsService
         return null;
     }
 
-    private decimal EstimateResourceCost(AzureResource resource, double subscriptionCost)
+    private static decimal EstimateResourceCost(AzureResource resource, double subscriptionCost)
     {
+        // Return 0 if cost data is unavailable — never fabricate financial figures.
+        if (subscriptionCost <= 0) return 0m;
+
         var type = resource.Type.ToLower();
-        if (type.Contains("microsoft.compute/disks")) return (decimal)(subscriptionCost * 0.02);
+        if (type.Contains("microsoft.compute/disks"))          return (decimal)(subscriptionCost * 0.02);
         if (type.Contains("microsoft.network/publicipaddresses")) return 3.0m;
-        if (type.Contains("microsoft.compute/snapshots")) return (decimal)(subscriptionCost * 0.01);
+        if (type.Contains("microsoft.compute/snapshots"))      return (decimal)(subscriptionCost * 0.01);
+        if (type.Contains("microsoft.network/loadbalancers"))  return (decimal)(subscriptionCost * 0.005);
         return (decimal)(subscriptionCost * 0.005);
+    }
+
+    private static string NormaliseSubId(string id)
+    {
+        // Strip the /subscriptions/ prefix if present so lookups always match
+        if (id.StartsWith("/subscriptions/", StringComparison.OrdinalIgnoreCase))
+            return id.Split('/')[2];
+        return id;
     }
 
     private string GetWasteRecommendation(string reason, string resourceType)
@@ -523,16 +548,16 @@ public class FinOpsService : IFinOpsService
             string? currency = null;
             if (props.TryGetProperty("extendedProperties", out var extProps))
             {
-                if (extProps.TryGetProperty("annualSavingsAmount", out var savingsEl))
-                    decimal.TryParse(savingsEl.GetString(), out var s) ;
                 if (extProps.TryGetProperty("savingsCurrency", out var currEl))
                     currency = currEl.GetString();
+
                 if (extProps.TryGetProperty("annualSavingsAmount", out var annualEl))
                 {
                     if (annualEl.ValueKind == JsonValueKind.Number)
                         savings = annualEl.GetDecimal();
-                    else if (annualEl.ValueKind == JsonValueKind.String)
-                        decimal.TryParse(annualEl.GetString(), out var parsedSavings);
+                    else if (annualEl.ValueKind == JsonValueKind.String &&
+                             decimal.TryParse(annualEl.GetString(), out var parsedSavings))
+                        savings = parsedSavings;
                 }
             }
 

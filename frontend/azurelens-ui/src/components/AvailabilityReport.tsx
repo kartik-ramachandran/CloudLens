@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip, Table, TableBody, TableCell,
-  TableContainer, TableHead, TableRow, Paper, Alert, LinearProgress, CircularProgress
+  TableContainer, TableHead, TableRow, Paper, Alert, LinearProgress, CircularProgress, Button,
 } from '@mui/material';
 import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import BackupIcon from '@mui/icons-material/Backup';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import LoadingSpinner from './LoadingSpinner';
 import { AzureCredentials } from '../types';
 import { getAvailabilityReport } from '../services/api';
@@ -19,20 +20,29 @@ const AvailabilityReportComponent: React.FC<AvailabilityReportProps> = ({ creden
   const [report, setReport] = useState<AvailabilityReportData | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const load = async () => {
+    setLoading(true);
+    try { setReport(await getAvailabilityReport(credentials)); }
+    catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try { setReport(await getAvailabilityReport(credentials)); }
-      catch (e) { console.error(e); }
-      finally { setLoading(false); }
-    };
     if (credentials.sessionId) load();
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
-  if (loading) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
+  if (loading && !report) return <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}><CircularProgress /></Box>;
 
   return (
     <Box>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+        <Button variant="outlined" size="small"
+          startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+          onClick={load} disabled={loading}
+        >
+          {loading ? 'Loading…' : 'Refresh'}
+        </Button>
+      </Box>
       {report && (
         <>
           {report.activeIncidents > 0 && (

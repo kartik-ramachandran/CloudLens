@@ -8,31 +8,54 @@ const getTheme = (mode: PaletteMode) => createTheme({
   palette: {
     mode,
     primary: {
-      main: '#0066CC',
-      ...(mode === 'dark' && { main: '#4A90E2' }),
+      main: mode === 'dark' ? '#667eea' : '#0066CC',
     },
     secondary: {
-      main: '#4A90E2',
+      main: '#764ba2',
     },
     background: {
-      default: mode === 'light' ? '#f5f7fa' : '#0a0e27',
-      paper: mode === 'light' ? '#ffffff' : '#1a1f3a',
+      default: mode === 'light' ? '#f4f6fb' : '#0a0e27',
+      paper:   mode === 'light' ? '#ffffff'  : '#141830',
     },
     text: {
-      primary: mode === 'light' ? '#2c3e50' : '#e0e6ed',
-      secondary: mode === 'light' ? '#7f8c8d' : '#a0a8b5',
+      primary:   mode === 'light' ? '#1e2a3a' : '#e0e6ed',
+      secondary: mode === 'light' ? '#6b7280' : '#a0a8b5',
     },
+    divider: mode === 'light' ? 'rgba(102,126,234,0.14)' : 'rgba(255,255,255,0.08)',
   },
   typography: {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  },
+  shape: {
+    borderRadius: 10,
   },
   components: {
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 8,
-          boxShadow: mode === 'light' ? '0 2px 4px rgba(0,0,0,0.08)' : '0 2px 8px rgba(0,0,0,0.4)',
+          borderRadius: 12,
+          boxShadow: mode === 'light'
+            ? '0 1px 3px rgba(0,0,0,0.07), 0 4px 12px rgba(102,126,234,0.08)'
+            : '0 2px 12px rgba(0,0,0,0.5)',
         },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: { borderRadius: 8 },
+      },
+    },
+    MuiButton: {
+      styleOverrides: {
+        root: { borderRadius: 8, textTransform: 'none', fontWeight: 600 },
+      },
+    },
+    MuiTextField: {
+      defaultProps: { size: 'small' },
+    },
+    MuiTableCell: {
+      styleOverrides: {
+        root: { borderColor: mode === 'light' ? 'rgba(102,126,234,0.12)' : 'rgba(255,255,255,0.06)' },
       },
     },
   },

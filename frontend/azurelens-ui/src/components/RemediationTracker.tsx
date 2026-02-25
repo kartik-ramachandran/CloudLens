@@ -10,6 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import LinkIcon from '@mui/icons-material/Link';
 import BuildIcon from '@mui/icons-material/Build';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { AzureCredentials, RemediationItem, RemediationItemDto, ComplianceIssue } from '../types';
 import { getRemediationItems, createRemediationItem, updateRemediationItem, deleteRemediationItem, createJiraTicketForRemediation } from '../services/api';
 import AIRemediationAgent from './AIRemediationAgent';
@@ -144,9 +145,17 @@ const RemediationTracker: React.FC<RemediationTrackerProps> = ({ credentials }) 
               <BuildIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
               Remediation Items
             </Typography>
-            <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} size="small">
-              Add Item
-            </Button>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button variant="outlined" size="small"
+                startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+                onClick={load} disabled={loading}
+              >
+                {loading ? 'Loading…' : 'Refresh'}
+              </Button>
+              <Button variant="contained" startIcon={<AddIcon />} onClick={openCreate} size="small">
+                Add Item
+              </Button>
+            </Box>
           </Box>
 
           {loading ? <CircularProgress /> : (
