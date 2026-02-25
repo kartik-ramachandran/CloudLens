@@ -150,3 +150,36 @@ public class RightsizingRecommendation
     public string Impact { get; set; } = "Medium";
     public string MigrationSteps { get; set; } = string.Empty;
 }
+
+public class BulkTagRequest
+{
+    public List<string> ResourceIds { get; set; } = new();
+    public Dictionary<string, string> Tags { get; set; } = new();
+    public bool ReplaceExisting { get; set; } = false; // If true, replace all tags; if false, merge
+}
+
+public class BulkTagResult
+{
+    public int TotalResources { get; set; }
+    public int SuccessCount { get; set; }
+    public int FailureCount { get; set; }
+    public List<string> SuccessfulResources { get; set; } = new();
+    public List<TagOperationFailure> Failures { get; set; } = new();
+}
+
+public class TagOperationFailure
+{
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string ErrorMessage { get; set; } = string.Empty;
+}
+
+public class TagSuggestion
+{
+    public string ResourceId { get; set; } = string.Empty;
+    public string ResourceName { get; set; } = string.Empty;
+    public string ResourceType { get; set; } = string.Empty;
+    public Dictionary<string, string> SuggestedTags { get; set; } = new();
+    public string Reasoning { get; set; } = string.Empty;
+    public double ConfidenceScore { get; set; } // 0-1
+}

@@ -13,4 +13,9 @@ public interface IFinOpsService
     Task<List<BudgetData>> GetBudgetsAsync(AzureCredentials credentials);
     Task<TagComplianceReport> GetTagComplianceAsync(AzureCredentials credentials, List<string>? requiredTags = null);
     Task<List<AIRecommendation>> GenerateFinOpsAIInsightsAsync(AzureCredentials credentials, string insightType);
+    
+    // Tag Remediation
+    Task<BulkTagResult> ApplyBulkTagsAsync(AzureCredentials credentials, BulkTagRequest request);
+    Task<byte[]> ExportTagViolationsToCsvAsync(AzureCredentials credentials, List<string>? requiredTags = null);
+    Task<List<TagSuggestion>> GetAITagSuggestionsAsync(AzureCredentials credentials, List<string> resourceIds);
 }

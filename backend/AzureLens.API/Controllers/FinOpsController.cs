@@ -176,6 +176,70 @@ public class FinOpsController : ControllerBase
         }
     }
 
+    [HttpPost("apply-bulk-tags")]
+    public async Task<IActionResult> ApplyBulkTags([FromBody] BulkTagRequestDto request)
+    {
+        try
+        {
+            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            if (credentials == null) return Unauthorized("Invalid session");
+            credentials.SubscriptionIds = request.SubscriptionIds;
+
+            var bulkRequest = new BulkTagRequest
+            {
+                ResourceIds = request.ResourceIds,
+                Tags = request.Tags,
+                ReplaceExisting = request.ReplaceExisting
+            };
+
+            var result = await _finOpsService.ApplyBulkTagsAsync(credentials, bulkRequest);
+            return Ok(result);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error applying bulk tags");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("export-tag-violations")]
+    public async Task<IActionResult> ExportTagViolations([FromBody] TagComplianceRequest request)
+    {
+        try
+        {
+            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            if (credentials == null) return Unauthorized("Invalid session");
+            credentials.SubscriptionIds = request.SubscriptionIds;
+
+            var csvBytes = await _finOpsService.ExportTagViolationsToCsvAsync(credentials, request.RequiredTags);
+            return File(csvBytes, "text/csv", $"tag-violations-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting tag violations");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
+    [HttpPost("ai-tag-suggestions")]
+    public async Task<IActionResult> GetAITagSuggestions([FromBody] AITagSuggestionRequest request)
+    {
+        try
+        {
+            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            if (credentials == null) return Unauthorized("Invalid session");
+            credentials.SubscriptionIds = request.SubscriptionIds;
+
+            var suggestions = await _finOpsService.GetAITagSuggestionsAsync(credentials, request.ResourceIds);
+            return Ok(suggestions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating AI tag suggestions");
+            return StatusCode(500, new { error = ex.Message });
+        }
+    }
+
     private AzureCredentials? GetCredentials(SubscriptionRequest request)
     {
         var credentials = _credentialCache.GetCredentials(request.SessionId);
@@ -188,4 +252,16 @@ public class FinOpsController : ControllerBase
 public class TagComplianceRequest : SubscriptionRequest
 {
     public List<string>? RequiredTags { get; set; }
+}
+
+public class BulkTagRequestDto : SubscriptionRequest
+{
+    public List<string> ResourceIds { get; set; } = new();
+    public Dictionary<string, string> Tags { get; set; } = new();
+    public bool ReplaceExisting { get; set; } = false;
+}
+
+public class AITagSuggestionRequest : SubscriptionRequest
+{
+    public List<string> ResourceIds { get; set; } = new();
 }

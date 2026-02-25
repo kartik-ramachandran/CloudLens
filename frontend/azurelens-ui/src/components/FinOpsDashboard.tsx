@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Card, CardContent, Typography, Grid, Chip, Button, Alert,
-  CircularProgress, LinearProgress, Table, TableBody, TableCell,
+  CircularProgress, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Tab, Tabs, Tooltip,
-  Select, MenuItem, FormControl, InputLabel
+  Select, MenuItem, FormControl, InputLabel, TextField, Checkbox, IconButton,
+  Snackbar
 } from '@mui/material';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import DeleteSweepIcon from '@mui/icons-material/DeleteSweep';
@@ -14,11 +15,13 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import CloseIcon from '@mui/icons-material/Close';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, BarChart, Bar, Legend } from 'recharts';
 import { AzureCredentials, FinOpsMetrics, WastedResource, AdvisorRecommendation, CostForecast, CostAnomaly, TagComplianceReport } from '../types';
 import {
   getFinOpsMetrics, getWastedResources, getAdvisorRecommendations,
-  getCostForecast, getCostAnomalies, getTagCompliance, getFinOpsAIInsights
+  getCostForecast, getCostAnomalies, getTagCompliance, getFinOpsAIInsights,
+  applyBulkTags, exportTagViolationsCsv, getAITagSuggestions
 } from '../services/api';
 
 interface FinOpsDashboardProps {
@@ -39,6 +42,18 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
   const [aiInsights, setAiInsights] = useState<any[]>([]);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiInsightType, setAiInsightType] = useState('General');
+  
+  // Tag remediation state
+  const [selectedResources, setSelectedResources] = useState<string[]>([]);
+  const [tagOperationLoading, setTagOperationLoading] = useState(false);
+  const [snackbarOpen, setSnackbarOpen] = useState(false);
+  const [snackbarMessage, setSnackbarMessage] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState<any[]>([]);
+  const [aiSuggestionsLoading, setAiSuggestionsLoading] = useState(false);
+  const [resourceTagEdits, setResourceTagEdits] = useState<{ [resourceId: string]: { [key: string]: string } }>({});
+  const [editingResourceId, setEditingResourceId] = useState<string | null>(null);
+  const [editTagKey, setEditTagKey] = useState('');
+  const [editTagValue, setEditTagValue] = useState('');
 
   const loadAll = async () => {
     setLoading(true);
@@ -78,6 +93,166 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
     }
   };
 
+  const handleExportCsv = async () => {
+    try {
+      const blob = await exportTagViolationsCsv(credentials, tagReport?.requiredTags);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `tag-violations-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      setSnackbarMessage('Export completed successfully!');
+      setSnackbarOpen(true);
+    } catch (e: any) {
+      setError(e.message || 'Failed to export CSV');
+    }
+  };
+
+
+
+  const handleGetAISuggestions = async () => {
+    if (selectedResources.length === 0) {
+      setError('Please select at least one resource');
+      return;
+    }
+
+    setAiSuggestionsLoading(true);
+    try {
+      const suggestions = await getAITagSuggestions(credentials, selectedResources);
+      setAiSuggestions(suggestions);
+      
+      // Pre-populate resource tag edits with AI suggestions
+      const edits: { [resourceId: string]: { [key: string]: string } } = {};
+      suggestions.forEach(s => {
+        edits[s.resourceId] = { ...s.suggestedTags };
+      });
+      setResourceTagEdits(edits);
+      
+      setSnackbarMessage(`Generated ${suggestions.length} AI tag suggestions. Review and apply!`);
+      setSnackbarOpen(true);
+    } catch (e: any) {
+      setError(e.message || 'Failed to generate AI suggestions');
+    } finally {
+      setAiSuggestionsLoading(false);
+    }
+  };
+
+  const handleApplyAllSuggestions = async () => {
+    if (Object.keys(resourceTagEdits).length === 0) {
+      setError('No tag edits to apply');
+      return;
+    }
+
+    setTagOperationLoading(true);
+    try {
+      let successCount = 0;
+      let failureCount = 0;
+
+      // Apply tags for each resource individually
+      for (const [resourceId, tags] of Object.entries(resourceTagEdits)) {
+        try {
+          await applyBulkTags(credentials, [resourceId], tags, false);
+          successCount++;
+        } catch {
+          failureCount++;
+        }
+      }
+
+      setSnackbarMessage(`Applied tags: ${successCount} succeeded, ${failureCount} failed`);
+      setSnackbarOpen(true);
+      setResourceTagEdits({});
+      setAiSuggestions([]);
+      
+      // Reload data
+      await loadAll();
+    } catch (e: any) {
+      setError(e.message || 'Failed to apply suggestions');
+    } finally {
+      setTagOperationLoading(false);
+    }
+  };
+
+  const handleApplySingleResource = async (resourceId: string) => {
+    const tags = resourceTagEdits[resourceId];
+    if (!tags || Object.keys(tags).length === 0) {
+      setError('No tags to apply for this resource');
+      return;
+    }
+
+    setTagOperationLoading(true);
+    try {
+      await applyBulkTags(credentials, [resourceId], tags, false);
+      
+      // Remove from edits
+      const newEdits = { ...resourceTagEdits };
+      delete newEdits[resourceId];
+      setResourceTagEdits(newEdits);
+      
+      setSnackbarMessage('Tags applied successfully!');
+      setSnackbarOpen(true);
+      
+      // Reload data
+      await loadAll();
+    } catch (e: any) {
+      setError(e.message || 'Failed to apply tags');
+    } finally {
+      setTagOperationLoading(false);
+    }
+  };
+
+  const handleAddTagToResource = (resourceId: string) => {
+    if (!editTagKey || !editTagValue) return;
+
+    const currentTags = resourceTagEdits[resourceId] || {};
+    setResourceTagEdits({
+      ...resourceTagEdits,
+      [resourceId]: {
+        ...currentTags,
+        [editTagKey]: editTagValue
+      }
+    });
+    
+    setEditTagKey('');
+    setEditTagValue('');
+    setEditingResourceId(null);
+  };
+
+  const handleRemoveTagFromResource = (resourceId: string, tagKey: string) => {
+    const currentTags = { ...resourceTagEdits[resourceId] };
+    delete currentTags[tagKey];
+    
+    if (Object.keys(currentTags).length === 0) {
+      const newEdits = { ...resourceTagEdits };
+      delete newEdits[resourceId];
+      setResourceTagEdits(newEdits);
+    } else {
+      setResourceTagEdits({
+        ...resourceTagEdits,
+        [resourceId]: currentTags
+      });
+    }
+  };
+
+  const toggleResourceSelection = (resourceId: string) => {
+    setSelectedResources(prev =>
+      prev.includes(resourceId)
+        ? prev.filter(id => id !== resourceId)
+        : [...prev, resourceId]
+    );
+  };
+
+  const toggleSelectAll = () => {
+    if (!tagReport) return;
+    if (selectedResources.length === tagReport.violations.length) {
+      setSelectedResources([]);
+    } else {
+      setSelectedResources(tagReport.violations.map(v => v.resourceId));
+    }
+  };
+
   useEffect(() => { loadAll(); }, []);
 
   const severityColor = (sev: string) =>
@@ -103,7 +278,11 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {loading && <LinearProgress sx={{ mb: 2 }} />}
+      {loading && (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3, mb: 2 }}>
+          <CircularProgress size={40} />
+        </Box>
+      )}
 
       {/* KPI Cards */}
       {metrics && (
@@ -134,14 +313,36 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
             <Card sx={{ bgcolor: '#f0f8ff', borderLeft: '4px solid #0078d4' }}>
               <CardContent>
                 <Typography variant="body2" color="text.secondary">Tag Coverage</Typography>
-                <Typography variant="h5" sx={{ fontWeight: 700, color: '#0078d4' }}>
-                  {tagReport?.tagCoveragePercent?.toFixed(1) ?? '—'}%
-                </Typography>
-                <LinearProgress
-                  variant="determinate"
-                  value={tagReport?.tagCoveragePercent ?? 0}
-                  sx={{ mt: 1, height: 6, borderRadius: 3 }}
-                />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 1 }}>
+                  <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+                    <CircularProgress
+                      variant="determinate"
+                      value={tagReport?.tagCoveragePercent ?? 0}
+                      size={60}
+                      thickness={4}
+                      sx={{ color: '#0078d4' }}
+                    />
+                    <Box
+                      sx={{
+                        top: 0,
+                        left: 0,
+                        bottom: 0,
+                        right: 0,
+                        position: 'absolute',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}
+                    >
+                      <Typography variant="caption" fontWeight={600} color="#0078d4">
+                        {tagReport?.tagCoveragePercent?.toFixed(0) ?? '0'}%
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    of resources are tagged
+                  </Typography>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -349,21 +550,78 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
             </Grid>
           </Grid>
 
-          <Typography variant="subtitle2" sx={{ mb: 1 }}>Required Tags: {tagReport.requiredTags.join(', ')}</Typography>
+          <Box sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'center' }}>
+            <Typography variant="subtitle2">Required Tags: {tagReport.requiredTags.join(', ')}</Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<DownloadIcon />}
+              onClick={handleExportCsv}
+              disabled={tagReport.violations.length === 0}
+            >
+              Export CSV
+            </Button>
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={aiSuggestionsLoading ? <CircularProgress size={16} /> : <AutoAwesomeIcon />}
+              onClick={handleGetAISuggestions}
+              disabled={selectedResources.length === 0 || aiSuggestionsLoading}
+            >
+              Get AI Suggestions
+            </Button>
+            {Object.keys(resourceTagEdits).length > 0 && (
+              <Button
+                variant="contained"
+                size="small"
+                color="success"
+                startIcon={tagOperationLoading ? <CircularProgress size={16} color="inherit" /> : <LocalOfferIcon />}
+                onClick={handleApplyAllSuggestions}
+                disabled={tagOperationLoading}
+              >
+                Apply All ({Object.keys(resourceTagEdits).length})
+              </Button>
+            )}
+          </Box>
+
+          {aiSuggestions.length > 0 && (
+            <Alert severity="success" sx={{ mb: 2 }}>
+              <Typography variant="body2" fontWeight={600}>✓ AI Suggestions Generated</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Review suggested tags below. Edit if needed, then click "Apply All" or apply individually.
+              </Typography>
+            </Alert>
+          )}
 
           <TableContainer component={Paper}>
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                  <TableCell padding="checkbox">
+                    <Checkbox
+                      checked={selectedResources.length === tagReport.violations.length && tagReport.violations.length > 0}
+                      indeterminate={selectedResources.length > 0 && selectedResources.length < tagReport.violations.length}
+                      onChange={toggleSelectAll}
+                    />
+                  </TableCell>
                   <TableCell><strong>Resource</strong></TableCell>
                   <TableCell><strong>Type</strong></TableCell>
                   <TableCell><strong>Resource Group</strong></TableCell>
                   <TableCell><strong>Missing Tags</strong></TableCell>
+                  <TableCell><strong>Tags to Apply</strong></TableCell>
+                  <TableCell><strong>Actions</strong></TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {tagReport.violations.slice(0, 50).map((v, i) => (
                   <TableRow key={i} hover>
+                    <TableCell padding="checkbox">
+                      <Checkbox
+                        checked={selectedResources.includes(v.resourceId)}
+                        onChange={() => toggleResourceSelection(v.resourceId)}
+                      />
+                    </TableCell>
                     <TableCell>{v.resourceName}</TableCell>
                     <TableCell><Typography variant="caption">{v.resourceType.split('/').pop()}</Typography></TableCell>
                     <TableCell>{v.resourceGroup}</TableCell>
@@ -371,6 +629,66 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
                       {v.missingTags.map(t => (
                         <Chip key={t} label={t} size="small" color="warning" sx={{ mr: 0.5 }} />
                       ))}
+                    </TableCell>
+                    <TableCell>
+                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+                        {resourceTagEdits[v.resourceId] && Object.entries(resourceTagEdits[v.resourceId]).map(([key, value]) => (
+                          <Chip
+                            key={key}
+                            label={`${key}: ${value}`}
+                            size="small"
+                            color="primary"
+                            variant="outlined"
+                            onDelete={() => handleRemoveTagFromResource(v.resourceId, key)}
+                          />
+                        ))}
+                        {editingResourceId === v.resourceId ? (
+                          <Box sx={{ display: 'flex', gap: 0.5 }}>
+                            <TextField
+                              size="small"
+                              placeholder="Key"
+                              value={editTagKey}
+                              onChange={(e) => setEditTagKey(e.target.value)}
+                              sx={{ width: 80 }}
+                            />
+                            <TextField
+                              size="small"
+                              placeholder="Value"
+                              value={editTagValue}
+                              onChange={(e) => setEditTagValue(e.target.value)}
+                              sx={{ width: 100 }}
+                            />
+                            <IconButton size="small" color="primary" onClick={() => handleAddTagToResource(v.resourceId)}>
+                              <LocalOfferIcon fontSize="small" />
+                            </IconButton>
+                            <IconButton size="small" onClick={() => setEditingResourceId(null)}>
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
+                        ) : (
+                          <Button
+                            size="small"
+                            variant="text"
+                            onClick={() => setEditingResourceId(v.resourceId)}
+                          >
+                            + Add Tag
+                          </Button>
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      {resourceTagEdits[v.resourceId] && Object.keys(resourceTagEdits[v.resourceId]).length > 0 && (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          color="primary"
+                          startIcon={<LocalOfferIcon />}
+                          onClick={() => handleApplySingleResource(v.resourceId)}
+                          disabled={tagOperationLoading}
+                        >
+                          Apply
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -430,6 +748,14 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
           )}
         </Box>
       )}
+
+      {/* Success Snackbar */}
+      <Snackbar
+        open={snackbarOpen}
+        autoHideDuration={6000}
+        onClose={() => setSnackbarOpen(false)}
+        message={snackbarMessage}
+      />
     </Box>
   );
 };

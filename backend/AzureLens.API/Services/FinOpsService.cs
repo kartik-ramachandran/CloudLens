@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.Json;
 using Azure.Core;
 using Azure.Identity;
+using Azure.ResourceManager;
 using AzureLens.API.Models;
 
 namespace AzureLens.API.Services;
@@ -17,6 +18,15 @@ public class FinOpsService : IFinOpsService
         _azureService = azureService;
         _aiService = aiService;
         _logger = logger;
+    }
+
+    private TokenCredential GetCredential(AzureCredentials credentials)
+    {
+        return new ClientSecretCredential(
+            credentials.TenantId,
+            credentials.ClientId,
+            credentials.ClientSecret
+        );
     }
 
     public async Task<FinOpsMetrics> GetFinOpsMetricsAsync(AzureCredentials credentials)
@@ -449,9 +459,6 @@ public class FinOpsService : IFinOpsService
 
     // --- Private helpers ---
 
-    private TokenCredential GetCredential(AzureCredentials credentials) =>
-        new ClientSecretCredential(credentials.TenantId, credentials.ClientId, credentials.ClientSecret);
-
     private string? DetectWasteReason(AzureResource resource)
     {
         var type = resource.Type.ToLower();
@@ -623,4 +630,162 @@ public class FinOpsService : IFinOpsService
 
         return points.OrderBy(p => p.Month).ToList();
     }
+
+    public async Task<BulkTagResult> ApplyBulkTagsAsync(AzureCredentials credentials, BulkTagRequest request)
+    {
+        var result = new BulkTagResult
+        {
+            TotalResources = request.ResourceIds.Count
+        };
+
+        var credential = GetCredential(credentials);
+        var armClient = new ArmClient(credential);
+
+        foreach (var resourceId in request.ResourceIds)
+        {
+            try
+            {
+                // Get the resource
+                var resourceIdentifier = new Azure.Core.ResourceIdentifier(resourceId);
+                var genericResource = armClient.GetGenericResource(resourceIdentifier);
+                var resource = await genericResource.GetAsync();
+
+                // Prepare tags
+                var updatedTags = request.ReplaceExisting 
+                    ? new Dictionary<string, string>(request.Tags)
+                    : new Dictionary<string, string>(resource.Value.Data.Tags ?? new Dictionary<string, string>());
+
+                if (!request.ReplaceExisting)
+                {
+                    foreach (var tag in request.Tags)
+                    {
+                        updatedTags[tag.Key] = tag.Value;
+                    }
+                }
+
+                // Update the resource with new tags
+                var updateData = resource.Value.Data;
+                updateData.Tags.Clear();
+                foreach (var tag in updatedTags)
+                {
+                    updateData.Tags.Add(tag.Key, tag.Value);
+                }
+
+                await genericResource.UpdateAsync(Azure.WaitUntil.Completed, updateData);
+
+                result.SuccessCount++;
+                result.SuccessfulResources.Add(resourceId);
+            }
+            catch (Exception ex)
+            {
+                result.FailureCount++;
+                result.Failures.Add(new TagOperationFailure
+                {
+                    ResourceId = resourceId,
+                    ResourceName = resourceId.Split('/').LastOrDefault() ?? resourceId,
+                    ErrorMessage = ex.Message
+                });
+            }
+        }
+
+        return result;
+    }
+
+    public async Task<byte[]> ExportTagViolationsToCsvAsync(AzureCredentials credentials, List<string>? requiredTags = null)
+    {
+        var tagReport = await GetTagComplianceAsync(credentials, requiredTags);
+
+        using var memoryStream = new System.IO.MemoryStream();
+        using var writer = new System.IO.StreamWriter(memoryStream);
+
+        // Write CSV header
+        await writer.WriteLineAsync("Resource ID,Resource Name,Resource Type,Resource Group,Subscription,Missing Tags");
+
+        // Write violations
+        foreach (var violation in tagReport.Violations)
+        {
+            var line = $"\"{violation.ResourceId}\",\"{violation.ResourceName}\",\"{violation.ResourceType}\",\"{violation.ResourceGroup}\",\"{tagReport.SubscriptionName}\",\"{string.Join(", ", violation.MissingTags)}\"";
+            await writer.WriteLineAsync(line);
+        }
+
+        await writer.FlushAsync();
+        return memoryStream.ToArray();
+    }
+
+    public async Task<List<TagSuggestion>> GetAITagSuggestionsAsync(AzureCredentials credentials, List<string> resourceIds)
+    {
+        var suggestions = new List<TagSuggestion>();
+        var credential = GetCredential(credentials);
+        var armClient = new ArmClient(credential);
+
+        foreach (var resourceId in resourceIds)
+        {
+            try
+            {
+                // Get resource details
+                var resourceIdentifier = new Azure.Core.ResourceIdentifier(resourceId);
+                var genericResource = armClient.GetGenericResource(resourceIdentifier);
+                var resource = await genericResource.GetAsync();
+
+                var resourceName = resource.Value.Data.Name;
+                var resourceType = resource.Value.Data.ResourceType.ToString();
+                var resourceGroup = resourceIdentifier.ResourceGroupName ?? "";
+
+                    // Generate AI suggestions based on patterns
+                    var suggestedTags = new Dictionary<string, string>();
+                    var reasoning = new List<string>();
+
+                    // Environment inference from resource name
+                    if (resourceName.Contains("prod", StringComparison.OrdinalIgnoreCase) || 
+                        resourceName.Contains("production", StringComparison.OrdinalIgnoreCase))
+                    {
+                        suggestedTags["Environment"] = "Production";
+                        reasoning.Add("Resource name contains 'prod'");
+                    }
+                    else if (resourceName.Contains("dev", StringComparison.OrdinalIgnoreCase) || 
+                             resourceName.Contains("development", StringComparison.OrdinalIgnoreCase))
+                    {
+                        suggestedTags["Environment"] = "Development";
+                        reasoning.Add("Resource name contains 'dev'");
+                    }
+                    else if (resourceName.Contains("test", StringComparison.OrdinalIgnoreCase) || 
+                             resourceName.Contains("qa", StringComparison.OrdinalIgnoreCase))
+                    {
+                        suggestedTags["Environment"] = "Test";
+                        reasoning.Add("Resource name contains 'test' or 'qa'");
+                    }
+                    else if (resourceName.Contains("staging", StringComparison.OrdinalIgnoreCase) || 
+                             resourceName.Contains("stg", StringComparison.OrdinalIgnoreCase))
+                    {
+                        suggestedTags["Environment"] = "Staging";
+                        reasoning.Add("Resource name contains 'staging'");
+                    }
+
+                // Project inference from resource group
+                if (!string.IsNullOrEmpty(resourceGroup))
+                {
+                    suggestedTags["Project"] = resourceGroup;
+                    reasoning.Add($"Inherited from resource group: {resourceGroup}");
+                }
+
+                suggestions.Add(new TagSuggestion
+                {
+                    ResourceId = resourceId,
+                    ResourceName = resourceName,
+                    ResourceType = resourceType,
+                    SuggestedTags = suggestedTags,
+                    Reasoning = string.Join("; ", reasoning),
+                    ConfidenceScore = reasoning.Count > 0 ? 0.7 : 0.3
+                });
+            }
+            catch (Exception ex)
+            {
+                // Skip resources that can't be accessed
+                _logger.LogWarning($"Error getting suggestions for {resourceId}: {ex.Message}");
+            }
+        }
+
+        return suggestions;
+    }
 }
+

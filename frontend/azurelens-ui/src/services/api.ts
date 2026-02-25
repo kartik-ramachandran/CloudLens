@@ -221,6 +221,42 @@ export const getFinOpsAIInsights = async (credentials: AzureCredentials, insight
   return response.data;
 };
 
+export const applyBulkTags = async (
+  credentials: AzureCredentials,
+  resourceIds: string[],
+  tags: { [key: string]: string },
+  replaceExisting: boolean = false
+): Promise<any> => {
+  const response = await api.post('/finops/apply-bulk-tags', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    resourceIds,
+    tags,
+    replaceExisting
+  });
+  return response.data;
+};
+
+export const exportTagViolationsCsv = async (credentials: AzureCredentials, requiredTags?: string[]): Promise<Blob> => {
+  const response = await api.post('/finops/export-tag-violations', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    requiredTags
+  }, {
+    responseType: 'blob'
+  });
+  return response.data;
+};
+
+export const getAITagSuggestions = async (credentials: AzureCredentials, resourceIds: string[]): Promise<any[]> => {
+  const response = await api.post('/finops/ai-tag-suggestions', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    resourceIds
+  });
+  return response.data;
+};
+
 // Compliance / SOC2 APIs
 export const getSoc2ControlDefinitions = async (): Promise<Soc2ControlDefinition[]> => {
   const response = await api.get('/compliance/soc2/control-definitions');
