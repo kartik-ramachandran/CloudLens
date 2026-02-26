@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore dependencies
-COPY ["AzureMonitor.API.csproj", "./"]
+COPY ["AzureLens.API.csproj", "./"]
 RUN dotnet restore
 
 # Copy everything else and build
@@ -33,4 +33,4 @@ ENV ASPNETCORE_ENVIRONMENT=Production
 ENV ConnectionStrings__DefaultConnection="Data Source=/app/data/azurelens.db"
 
 # Run the app
-ENTRYPOINT ["dotnet", "AzureMonitor.API.dll"]
+ENTRYPOINT ["dotnet", "AzureLens.API.dll"]
