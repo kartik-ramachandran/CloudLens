@@ -38,6 +38,11 @@ public class FinOpsService : IFinOpsService
             var resources = await _azureService.GetResourcesAsync(credentials);
             var costs = await _azureService.GetCostsAsync(credentials);
 
+            // Fetch per-resource cost data for accurate waste calculation
+            var endDate = DateTime.UtcNow;
+            var startDate = endDate.AddDays(-30);
+            var resourceCosts = await _azureService.GetResourceCostsAsync(credentials, startDate, endDate);
+
             // Now run advisor + tag compliance in parallel (they don't use Cost Management API)
             var advisorTask = GetAdvisorRecommendationsAsync(credentials, "Cost");
             var tagTask = GetTagComplianceAsync(credentials);
@@ -46,7 +51,7 @@ public class FinOpsService : IFinOpsService
             var advisor = await advisorTask;
             var tags = await tagTask;
 
-            var wasted = ComputeWastedResources(resources, costs);
+            var wasted = ComputeWastedResources(resources, costs, resourceCosts);
             var anomalies = ComputeCostAnomalies(costs);
 
             var totalWaste = wasted.Sum(w => w.EstimatedMonthlyCost);
@@ -78,7 +83,13 @@ public class FinOpsService : IFinOpsService
         {
             var resources = await _azureService.GetResourcesAsync(credentials);
             var costs = await _azureService.GetCostsAsync(credentials);
-            return ComputeWastedResources(resources, costs);
+            
+            // Fetch per-resource cost data for accurate cost calculation
+            var endDate = DateTime.UtcNow;
+            var startDate = endDate.AddDays(-30);
+            var resourceCosts = await _azureService.GetResourceCostsAsync(credentials, startDate, endDate);
+            
+            return ComputeWastedResources(resources, costs, resourceCosts);
         }
         catch (Exception ex)
         {
@@ -87,9 +98,14 @@ public class FinOpsService : IFinOpsService
         }
     }
 
-    private List<WastedResource> ComputeWastedResources(List<AzureResource> resources, List<CostData> costs)
+    private List<WastedResource> ComputeWastedResources(List<AzureResource> resources, List<CostData> costs, List<ResourceCostData> resourceCosts)
     {
-        // Build cost lookup by subscription — normalise IDs to bare GUIDs for reliable matching
+        // Build lookup for per-resource actual costs
+        var actualCostByResourceId = resourceCosts.ToDictionary(
+            rc => rc.ResourceId.ToLower(),
+            rc => rc.TotalCost);
+
+        // Build subscription-level costs as fallback
         var costBySubscription = costs.ToDictionary(
             c => NormaliseSubId(c.SubscriptionId),
             c => c.TotalCost);
@@ -100,8 +116,19 @@ public class FinOpsService : IFinOpsService
             var wasteReason = DetectWasteReason(resource);
             if (wasteReason == null) continue;
 
-            var subscriptionCost = costBySubscription.GetValueOrDefault(NormaliseSubId(resource.SubscriptionId), 0);
-            var estimatedCost = EstimateResourceCost(resource, (double)subscriptionCost);
+            // Try to get actual cost from resource-level data first
+            decimal estimatedCost;
+            if (actualCostByResourceId.TryGetValue(resource.Id.ToLower(), out var actualCost) && actualCost > 0)
+            {
+                // Use actual cost data
+                estimatedCost = actualCost;
+            }
+            else
+            {
+                // Fallback to estimation based on subscription total
+                var subscriptionCost = costBySubscription.GetValueOrDefault(NormaliseSubId(resource.SubscriptionId), 0);
+                estimatedCost = EstimateResourceCost(resource, (double)subscriptionCost);
+            }
 
             wastedList.Add(new WastedResource
             {
