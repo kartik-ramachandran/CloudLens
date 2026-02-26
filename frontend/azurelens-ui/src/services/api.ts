@@ -521,4 +521,88 @@ export const generateSingleRemediationSuggestion = async (
   return response.data;
 };
 
+// Export APIs
+export const exportResources = async (credentials: AzureCredentials, format: 'excel' | 'html' | 'csv' = 'excel'): Promise<Blob> => {
+  const response = await api.post('/export/resources', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    format: format === 'excel' ? 'Excel' : format === 'csv' ? 'CSV' : 'PDF'
+  }, { responseType: 'blob' });
+  return response.data;
+};
+
+export const exportCosts = async (credentials: AzureCredentials, format: 'excel' | 'html' | 'csv' = 'excel'): Promise<Blob> => {
+  const response = await api.post('/export/costs', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    format: format === 'excel' ? 'Excel' : format === 'csv' ? 'CSV' : 'PDF'
+  }, { responseType: 'blob' });
+  return response.data;
+};
+
+export const exportRecommendations = async (credentials: AzureCredentials, format: 'excel' | 'html' | 'csv' = 'excel'): Promise<Blob> => {
+  const response = await api.post('/export/recommendations', {
+    sessionId: credentials.sessionId,
+    subscriptionIds: credentials.subscriptionIds,
+    format: format === 'excel' ? 'Excel' : format === 'csv' ? 'CSV' : 'PDF'
+  }, { responseType: 'blob' });
+  return response.data;
+};
+
+// ── COST ALERTS API ──
+
+export const getCostAlertRules = async (sessionId: string) => {
+  const response = await api.get('/CostAlerts', {
+    params: { sessionId }
+  });
+  return response.data;
+};
+
+export const getCostAlertRule = async (id: number) => {
+  const response = await api.get(`/CostAlerts/${id}`);
+  return response.data;
+};
+
+export const createCostAlertRule = async (dto: any) => {
+  const response = await api.post('/CostAlerts', dto);
+  return response.data;
+};
+
+export const updateCostAlertRule = async (id: number, dto: any) => {
+  const response = await api.put(`/CostAlerts/${id}`, dto);
+  return response.data;
+};
+
+export const deleteCostAlertRule = async (id: number) => {
+  const response = await api.delete(`/CostAlerts/${id}`);
+  return response.data;
+};
+
+export const toggleCostAlertRule = async (id: number, isEnabled: boolean) => {
+  const response = await api.patch(`/CostAlerts/${id}/toggle`, isEnabled);
+  return response.data;
+};
+
+export const getCostAlertHistory = async (sessionId: string, alertRuleId?: number, pageSize: number = 50) => {
+  const response = await api.get('/CostAlerts/history', {
+    params: { sessionId, alertRuleId, pageSize }
+  });
+  return response.data;
+};
+
+export const acknowledgeCostAlert = async (alertId: number, acknowledgedBy?: string) => {
+  const response = await api.patch(`/CostAlerts/history/${alertId}/acknowledge`, acknowledgedBy);
+  return response.data;
+};
+
+export const resolveCostAlert = async (alertId: number) => {
+  const response = await api.patch(`/CostAlerts/history/${alertId}/resolve`);
+  return response.data;
+};
+
+export const evaluateCostAlerts = async () => {
+  const response = await api.post('/CostAlerts/evaluate');
+  return response.data;
+};
+
 export default api;

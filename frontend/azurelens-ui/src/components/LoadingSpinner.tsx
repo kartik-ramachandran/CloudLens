@@ -72,12 +72,16 @@ const LoadingSpinner: React.FC<LoadingSpinnerProps> = ({
             left: '50%',
             transform: 'translate(-50%, -50%)',
             animation: `${float} 3s ease-in-out infinite`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           <CloudIcon
             sx={{
               fontSize: 28,
               color: 'primary.main',
+              display: 'block',
             }}
           />
         </Box>

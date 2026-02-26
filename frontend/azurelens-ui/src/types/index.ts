@@ -772,3 +772,69 @@ export interface AIRemediationResponse {
   };
 }
 
+// Cost Alerts
+export interface CostAlertRule {
+  id: number;
+  name: string;
+  description: string;
+  alertType: 'DailyCost' | 'MonthlyCost' | 'ResourceCost' | 'ServiceCost';
+  thresholdAmount: number;
+  currency: string;
+  thresholdOperator: 'GreaterThan' | 'LessThan' | 'Equal' | 'GreaterThanOrEqual' | 'LessThanOrEqual';
+  subscriptionId?: string;
+  resourceType?: string;
+  resourceGroup?: string;
+  serviceName?: string;
+  checkFrequency: 'Hourly' | 'Daily' | 'Weekly';
+  isEnabled: boolean;
+  notificationEmail: string;
+  sendJiraTicket: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastCheckedAt?: string;
+  lastTriggeredAt?: string;
+  triggerCount: number;
+  createdBy: string;
+  sessionId: string;
+}
+
+export interface CostAlertHistory {
+  id: number;
+  alertRuleId: number;
+  alertRuleName: string;
+  actualAmount: number;
+  thresholdAmount: number;
+  currency: string;
+  subscriptionId: string;
+  resourceType?: string;
+  resourceGroup?: string;
+  serviceName?: string;
+  status: 'Triggered' | 'Resolved' | 'Acknowledged';
+  triggeredAt: string;
+  resolvedAt?: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  emailSent: boolean;
+  jiraTicketCreated: boolean;
+  jiraTicketKey?: string;
+  details: string;
+  alertRule?: CostAlertRule;
+}
+
+export interface CostAlertRuleDto {
+  name: string;
+  description: string;
+  alertType: string;
+  thresholdAmount: number;
+  currency: string;
+  thresholdOperator: string;
+  subscriptionId?: string;
+  resourceType?: string;
+  resourceGroup?: string;
+  serviceName?: string;
+  checkFrequency: string;
+  isEnabled: boolean;
+  notificationEmail: string;
+  sendJiraTicket: boolean;
+  sessionId: string;
+}

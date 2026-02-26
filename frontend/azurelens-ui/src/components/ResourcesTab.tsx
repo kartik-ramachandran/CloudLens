@@ -1,16 +1,22 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip,
   TextField, InputAdornment, TablePagination,
   CircularProgress, Alert, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Paper, Skeleton, Button,
-  Select, MenuItem, FormControl, Badge, IconButton,
+  Select, MenuItem, FormControl, Badge, IconButton, Grid,
+  Menu, Checkbox, ListItemText,
 } from '@mui/material';
+import {
+  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+} from 'recharts';
 import SearchIcon from '@mui/icons-material/Search';
 import StorageIcon from '@mui/icons-material/Storage';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ClearIcon from '@mui/icons-material/Clear';
+import PieChartIcon from '@mui/icons-material/PieChart';
+import SettingsIcon from '@mui/icons-material/Settings';
 import { AzureResource, AzureCredentials } from '../types';
 import { getAzureResources } from '../services/api';
 import { SectionHeader, StyledHeadCell, styledRowSx, EmptyState } from '../theme/designSystem';
@@ -20,11 +26,14 @@ interface ResourcesTabProps {
   compact?: boolean;
 }
 
+const CHART_COLORS = ['#6C63FF', '#00D2FF', '#FF6B6B', '#FFA500', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
+
 const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = false }) => {
   const [resources, setResources] = useState<AzureResource[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   
@@ -34,11 +43,39 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
   const [resourceGroupFilter, setResourceGroupFilter] = useState('All');
   const [tagFilter, setTagFilter] = useState('All');
 
+  // Column customization
+  const [columnMenuAnchor, setColumnMenuAnchor] = useState<null | HTMLElement>(null);
+  const [visibleColumns, setVisibleColumns] = useState(() => {
+    const saved = localStorage.getItem('resourcesTabColumns');
+    return saved ? JSON.parse(saved) : {
+      name: true,
+      subscription: true,
+      type: true,
+      location: true,
+      resourceGroup: true,
+      tags: true,
+      resourceId: false,
+    };
+  });
+
+  // Save column visibility to localStorage whenever it changes
+  useEffect(() => {
+    localStorage.setItem('resourcesTabColumns', JSON.stringify(visibleColumns));
+  }, [visibleColumns]);
+
+  // Debounce search term to improve performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Keep a ref to the latest credentials so the refresh button always uses current values
   const credentialsRef = useRef(credentials);
   credentialsRef.current = credentials;
 
-  const fetchResources = async () => {
+  const fetchResources = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
@@ -49,7 +86,7 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Re-fetch whenever the selected subscription changes
   useEffect(() => {
@@ -57,13 +94,13 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
-  const getSubscriptionInfo = (subscriptionId: string) => {
+  const getSubscriptionInfo = useCallback((subscriptionId: string) => {
     const sub = credentials?.subscriptions?.find(s => s.subscriptionId === subscriptionId);
     return {
       name: sub?.displayName || 'Unknown Subscription',
       id: subscriptionId
     };
-  };
+  }, [credentials.subscriptions]);
 
   // Extract unique values for filters
   const uniqueTypes = useMemo(() => {
@@ -103,63 +140,131 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
   }, [typeFilter, locationFilter, resourceGroupFilter, tagFilter, searchTerm]);
 
   // Clear all filters
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setTypeFilter('All');
     setLocationFilter('All');
     setResourceGroupFilter('All');
     setTagFilter('All');
     setSearchTerm('');
     setPage(0);
-  };
+  }, []);
 
-  const filteredResources = resources.filter(r => {
-    const subInfo = getSubscriptionInfo(r.subscriptionId);
-    const q = searchTerm.toLowerCase();
-    
-    // Text search
-    const matchesSearch = !searchTerm || 
-      r.name.toLowerCase().includes(q) ||
-      r.type.toLowerCase().includes(q) ||
-      r.location.toLowerCase().includes(q) ||
-      subInfo.name.toLowerCase().includes(q) ||
-      subInfo.id.toLowerCase().includes(q) ||
-      r.resourceGroup.toLowerCase().includes(q);
-    
-    // Type filter
-    const matchesType = typeFilter === 'All' || 
-      (r.type.split('/').pop() || r.type) === typeFilter;
-    
-    // Location filter
-    const matchesLocation = locationFilter === 'All' || 
-      r.location === locationFilter;
-    
-    // Resource Group filter
-    const matchesResourceGroup = resourceGroupFilter === 'All' || 
-      r.resourceGroup === resourceGroupFilter;
-    
-    // Tag filter
-    const matchesTag = tagFilter === 'All' || 
-      (r.tags && Object.keys(r.tags).includes(tagFilter));
-    
-    return matchesSearch && matchesType && matchesLocation && 
-           matchesResourceGroup && matchesTag;
-  });
+  const filteredResources = useMemo(() => {
+    return resources.filter(r => {
+      const subInfo = getSubscriptionInfo(r.subscriptionId);
+      const q = debouncedSearchTerm.toLowerCase();
+      
+      // Text search
+      const matchesSearch = !debouncedSearchTerm || 
+        r.name.toLowerCase().includes(q) ||
+        r.type.toLowerCase().includes(q) ||
+        r.location.toLowerCase().includes(q) ||
+        subInfo.name.toLowerCase().includes(q) ||
+        subInfo.id.toLowerCase().includes(q) ||
+        r.resourceGroup.toLowerCase().includes(q);
+      
+      // Type filter
+      const matchesType = typeFilter === 'All' || 
+        (r.type.split('/').pop() || r.type) === typeFilter;
+      
+      // Location filter
+      const matchesLocation = locationFilter === 'All' || 
+        r.location === locationFilter;
+      
+      // Resource Group filter
+      const matchesResourceGroup = resourceGroupFilter === 'All' || 
+        r.resourceGroup === resourceGroupFilter;
+      
+      // Tag filter
+      const matchesTag = tagFilter === 'All' || 
+        (r.tags && Object.keys(r.tags).includes(tagFilter));
+      
+      return matchesSearch && matchesType && matchesLocation && 
+             matchesResourceGroup && matchesTag;
+    });
+  }, [resources, debouncedSearchTerm, typeFilter, locationFilter, resourceGroupFilter, tagFilter, getSubscriptionInfo]);
 
-  const displayResources = filteredResources.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const displayResources = useMemo(() => {
+    return filteredResources.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [filteredResources, page, rowsPerPage]);
+
+  // Compute distribution data for pie charts
+  const typeDistribution = useMemo(() => {
+    const typeMap = new Map<string, number>();
+    filteredResources.forEach(r => {
+      const typeName = r.type.split('/').pop() || r.type;
+      typeMap.set(typeName, (typeMap.get(typeName) || 0) + 1);
+    });
+    return Array.from(typeMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8); // Top 8 types
+  }, [filteredResources]);
+
+  const locationDistribution = useMemo(() => {
+    const locationMap = new Map<string, number>();
+    filteredResources.forEach(r => {
+      locationMap.set(r.location, (locationMap.get(r.location) || 0) + 1);
+    });
+    return Array.from(locationMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8); // Top 8 locations
+  }, [filteredResources]);
 
   return (
-    <Card>
-      <CardContent sx={{ p: 3 }}>
+    <Box>
+      <Card>
+        <CardContent sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
           <SectionHeader icon={<StorageIcon />}>Resources</SectionHeader>
-          <Button
-            variant="outlined" size="small"
-            startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
-            onClick={fetchResources} disabled={loading}
-          >
-            {loading ? 'Loading…' : 'Refresh'}
-          </Button>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            {!compact && (
+              <IconButton
+                size="small"
+                onClick={(e) => setColumnMenuAnchor(e.currentTarget)}
+                title="Customize columns"
+              >
+                <SettingsIcon />
+              </IconButton>
+            )}
+            <Button
+              variant="outlined" size="small"
+              startIcon={loading ? <CircularProgress size={16} /> : <RefreshIcon />}
+              onClick={fetchResources} disabled={loading}
+            >
+              {loading ? 'Loading…' : 'Refresh'}
+            </Button>
+          </Box>
         </Box>
+
+        {/* Column Customization Menu */}
+        {!compact && (
+          <Menu
+            anchorEl={columnMenuAnchor}
+            open={Boolean(columnMenuAnchor)}
+            onClose={() => setColumnMenuAnchor(null)}
+          >
+            {Object.entries({
+              name: 'Resource Name',
+              subscription: 'Subscription',
+              type: 'Type',
+              location: 'Location',
+              resourceGroup: 'Resource Group',
+              tags: 'Tags',
+              resourceId: 'Resource ID',
+            }).map(([key, label]) => (
+              <MenuItem
+                key={key}
+                onClick={() => setVisibleColumns((prev: any) => ({ ...prev, [key]: !prev[key] }))}
+                dense
+              >
+                <Checkbox checked={visibleColumns[key as keyof typeof visibleColumns]} size="small" />
+                <ListItemText primary={label} />
+              </MenuItem>
+            ))}
+          </Menu>
+        )}
 
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
@@ -186,76 +291,84 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
             <Table sx={{ minWidth: compact ? 400 : 700 }}>
               <TableHead>
                 <TableRow>
-                  <StyledHeadCell>Resource Name</StyledHeadCell>
-                  <StyledHeadCell>Subscription</StyledHeadCell>
-                  <StyledHeadCell>Type</StyledHeadCell>
-                  <StyledHeadCell>Location</StyledHeadCell>
-                  {!compact && <StyledHeadCell>Resource Group</StyledHeadCell>}
-                  {!compact && <StyledHeadCell>Tags</StyledHeadCell>}
-                  {!compact && <StyledHeadCell>Resource ID</StyledHeadCell>}
+                  {(compact || visibleColumns.name) && <StyledHeadCell>Resource Name</StyledHeadCell>}
+                  {(compact || visibleColumns.subscription) && <StyledHeadCell>Subscription</StyledHeadCell>}
+                  {(compact || visibleColumns.type) && <StyledHeadCell>Type</StyledHeadCell>}
+                  {(compact || visibleColumns.location) && <StyledHeadCell>Location</StyledHeadCell>}
+                  {!compact && visibleColumns.resourceGroup && <StyledHeadCell>Resource Group</StyledHeadCell>}
+                  {!compact && visibleColumns.tags && <StyledHeadCell>Tags</StyledHeadCell>}
+                  {!compact && visibleColumns.resourceId && <StyledHeadCell>Resource ID</StyledHeadCell>}
                 </TableRow>
                 <TableRow sx={{ bgcolor: 'background.default' }}>
-                  <TableCell sx={{ py: 1, px: 1 }}>
-                    <TextField
-                      fullWidth
-                      size="small" 
-                      variant="outlined"
-                      placeholder="Search name…"
-                      value={searchTerm} 
-                      onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">
-                            <SearchIcon sx={{ fontSize: 16 }} />
-                          </InputAdornment>
-                        ),
-                      }}
-                      sx={{ bgcolor: 'background.paper' }}
-                    />
-                  </TableCell>
-                  <TableCell sx={{ py: 1, px: 1 }}>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                      {activeFilterCount > 0 && (
-                        <IconButton size="small" onClick={clearFilters} title="Clear all filters">
-                          <ClearIcon sx={{ fontSize: 16 }} />
-                        </IconButton>
-                      )}
-                      {activeFilterCount > 0 && (
-                        <Badge badgeContent={activeFilterCount} color="primary">
-                          <FilterListIcon sx={{ fontSize: 16 }} />
-                        </Badge>
-                      )}
-                    </Box>
-                  </TableCell>
-                  <TableCell sx={{ py: 1, px: 1 }}>
-                    <FormControl fullWidth size="small">
-                      <Select 
-                        value={typeFilter} 
-                        displayEmpty
-                        onChange={e => { setTypeFilter(e.target.value); setPage(0); }}
+                  {(compact || visibleColumns.name) && (
+                    <TableCell sx={{ py: 1, px: 1 }}>
+                      <TextField
+                        fullWidth
+                        size="small" 
+                        variant="outlined"
+                        placeholder="Search name…"
+                        value={searchTerm} 
+                        onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
+                        InputProps={{
+                          startAdornment: (
+                            <InputAdornment position="start">
+                              <SearchIcon sx={{ fontSize: 16 }} />
+                            </InputAdornment>
+                          ),
+                        }}
                         sx={{ bgcolor: 'background.paper' }}
-                      >
-                        {uniqueTypes.map(type => (
-                          <MenuItem key={type} value={type}>{type}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </TableCell>
-                  <TableCell sx={{ py: 1, px: 1 }}>
-                    <FormControl fullWidth size="small">
-                      <Select 
-                        value={locationFilter} 
-                        displayEmpty
-                        onChange={e => { setLocationFilter(e.target.value); setPage(0); }}
-                        sx={{ bgcolor: 'background.paper' }}
-                      >
-                        {uniqueLocations.map(loc => (
-                          <MenuItem key={loc} value={loc}>{loc}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </TableCell>
-                  {!compact && (
+                      />
+                    </TableCell>
+                  )}
+                  {(compact || visibleColumns.subscription) && (
+                    <TableCell sx={{ py: 1, px: 1 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {activeFilterCount > 0 && (
+                          <IconButton size="small" onClick={clearFilters} title="Clear all filters">
+                            <ClearIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        )}
+                        {activeFilterCount > 0 && (
+                          <Badge badgeContent={activeFilterCount} color="primary">
+                            <FilterListIcon sx={{ fontSize: 16 }} />
+                          </Badge>
+                        )}
+                      </Box>
+                    </TableCell>
+                  )}
+                  {(compact || visibleColumns.type) && (
+                    <TableCell sx={{ py: 1, px: 1 }}>
+                      <FormControl fullWidth size="small">
+                        <Select 
+                          value={typeFilter} 
+                          displayEmpty
+                          onChange={e => { setTypeFilter(e.target.value); setPage(0); }}
+                          sx={{ bgcolor: 'background.paper' }}
+                        >
+                          {uniqueTypes.map(type => (
+                            <MenuItem key={type} value={type}>{type}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                  )}
+                  {(compact || visibleColumns.location) && (
+                    <TableCell sx={{ py: 1, px: 1 }}>
+                      <FormControl fullWidth size="small">
+                        <Select 
+                          value={locationFilter} 
+                          displayEmpty
+                          onChange={e => { setLocationFilter(e.target.value); setPage(0); }}
+                          sx={{ bgcolor: 'background.paper' }}
+                        >
+                          {uniqueLocations.map(loc => (
+                            <MenuItem key={loc} value={loc}>{loc}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </TableCell>
+                  )}
+                  {!compact && visibleColumns.resourceGroup && (
                     <TableCell sx={{ py: 1, px: 1 }}>
                       <FormControl fullWidth size="small">
                         <Select 
@@ -271,7 +384,7 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
                       </FormControl>
                     </TableCell>
                   )}
-                  {!compact && (
+                  {!compact && visibleColumns.tags && (
                     <TableCell sx={{ py: 1, px: 1 }}>
                       <FormControl fullWidth size="small">
                         <Select 
@@ -293,39 +406,47 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
               <TableBody>
                 {displayResources.map((r, i) => (
                   <TableRow key={`${r.id}-${i}`} sx={styledRowSx}>
-                    <TableCell sx={{ py: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography>
-                    </TableCell>
-                    <TableCell sx={{ py: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25, fontSize: '0.82rem' }}>
-                        {getSubscriptionInfo(r.subscriptionId).name}
-                      </Typography>
-                      <Typography variant="caption" color="text.disabled"
-                        sx={{ fontFamily: 'monospace', fontSize: '0.68rem', display: 'block' }}>
-                        {getSubscriptionInfo(r.subscriptionId).id}
-                      </Typography>
-                    </TableCell>
-                    <TableCell sx={{ py: 1.5 }}>
-                      <Chip
-                        label={r.type.split('/').pop()}
-                        size="small"
-                        variant="outlined"
-                        sx={{ fontSize: '0.68rem', height: 22,
-                          '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-                          maxWidth: 180 }}
-                      />
-                    </TableCell>
-                    <TableCell sx={{ py: 1.5 }}>
-                      <Typography variant="body2" sx={{ fontSize: '0.82rem' }}>{r.location}</Typography>
-                    </TableCell>
-                    {!compact && (
+                    {(compact || visibleColumns.name) && (
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600 }}>{r.name}</Typography>
+                      </TableCell>
+                    )}
+                    {(compact || visibleColumns.subscription) && (
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25, fontSize: '0.82rem' }}>
+                          {getSubscriptionInfo(r.subscriptionId).name}
+                        </Typography>
+                        <Typography variant="caption" color="text.disabled"
+                          sx={{ fontFamily: 'monospace', fontSize: '0.68rem', display: 'block' }}>
+                          {getSubscriptionInfo(r.subscriptionId).id}
+                        </Typography>
+                      </TableCell>
+                    )}
+                    {(compact || visibleColumns.type) && (
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Chip
+                          label={r.type.split('/').pop()}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.68rem', height: 22,
+                            '& .MuiChip-label': { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                            maxWidth: 180 }}
+                        />
+                      </TableCell>
+                    )}
+                    {(compact || visibleColumns.location) && (
+                      <TableCell sx={{ py: 1.5 }}>
+                        <Typography variant="body2" sx={{ fontSize: '0.82rem' }}>{r.location}</Typography>
+                      </TableCell>
+                    )}
+                    {!compact && visibleColumns.resourceGroup && (
                       <TableCell sx={{ py: 1.5 }}>
                         <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.82rem' }}>
                           {r.resourceGroup}
                         </Typography>
                       </TableCell>
                     )}
-                    {!compact && (
+                    {!compact && visibleColumns.tags && (
                       <TableCell sx={{ py: 1.5, maxWidth: 300 }}>
                         {r.tags && Object.keys(r.tags).length > 0 ? (
                           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
@@ -351,7 +472,7 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
                         )}
                       </TableCell>
                     )}
-                    {!compact && (
+                    {!compact && visibleColumns.resourceId && (
                       <TableCell sx={{ py: 1.5, maxWidth: 260 }}>
                         <Typography variant="caption" color="text.disabled"
                           sx={{ fontFamily: 'monospace', fontSize: '0.68rem', display: 'block',
@@ -376,8 +497,69 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
             sx={{ borderTop: '1px solid', borderColor: 'divider', mt: 0 }}
           />
         )}
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+
+      {/* ── RESOURCE DISTRIBUTION CHARTS ── */}
+      {!loading && !compact && filteredResources.length > 0 && (
+        <Grid container spacing={2} sx={{ mt: 1 }}>
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <SectionHeader icon={<PieChartIcon />}>Distribution by Type</SectionHeader>
+                <ResponsiveContainer width="100%" height={320}>
+                  <PieChart>
+                    <Pie
+                      data={typeDistribution}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      innerRadius={45}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }: any) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                    >
+                      {typeDistribution.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [v, 'Count']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+          <Grid item xs={12} md={6}>
+            <Card>
+              <CardContent sx={{ p: 3 }}>
+                <SectionHeader icon={<PieChartIcon />}>Distribution by Location</SectionHeader>
+                <ResponsiveContainer width="100%" height={320}>
+                  <PieChart>
+                    <Pie
+                      data={locationDistribution}
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      innerRadius={45}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ name, percent }: any) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                      labelLine={{ stroke: '#666', strokeWidth: 1 }}
+                    >
+                      {locationDistribution.map((_, i) => (
+                        <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(v: number) => [v, 'Count']} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+      )}
+    </Box>
   );
 };
 

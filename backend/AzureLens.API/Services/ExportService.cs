@@ -278,4 +278,97 @@ public class ExportService : IExportService
         sb.AppendLine("</body></html>");
         return sb.ToString();
     }
+
+    public async Task<byte[]> ExportResourcesToCsvAsync(List<AzureResource> resources, string subscriptionName)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            // Header
+            sb.AppendLine("Resource Name,Type,Location,Resource Group,Tags");
+            
+            // Data
+            foreach (var resource in resources)
+            {
+                var tags = resource.Tags != null && resource.Tags.Any() 
+                    ? string.Join(" | ", resource.Tags.Select(t => $"{t.Key}:{t.Value}"))
+                    : "No tags";
+                    
+                sb.AppendLine($"{EscapeCsv(resource.Name)},{EscapeCsv(resource.Type)},{EscapeCsv(resource.Location)},{EscapeCsv(resource.ResourceGroup)},{EscapeCsv(tags)}");
+            }
+            
+            return Encoding.UTF8.GetBytes(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting resources to CSV");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> ExportCostsToCsvAsync(List<CostData> costs, DateTime startDate, DateTime endDate)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            // Header
+            sb.AppendLine("Start Date,Subscription,Currency,Total Cost");
+            
+            // Data
+            decimal totalCost = 0;
+            foreach (var cost in costs.OrderBy(c => c.StartDate))
+            {
+                sb.AppendLine($"{cost.StartDate:yyyy-MM-dd},{EscapeCsv(cost.SubscriptionName ?? "N/A")},{cost.Currency},{cost.TotalCost:F2}");
+                totalCost += cost.TotalCost;
+            }
+            
+            // Total
+            sb.AppendLine();
+            sb.AppendLine($",,Total,{totalCost:F2}");
+            
+            return Encoding.UTF8.GetBytes(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting costs to CSV");
+            throw;
+        }
+    }
+
+    public async Task<byte[]> ExportRecommendationsToCsvAsync(List<SecurityRecommendation> recommendations)
+    {
+        try
+        {
+            var sb = new StringBuilder();
+            // Header
+            sb.AppendLine("Title,Severity,Category,Resource,Description");
+            
+            // Data
+            foreach (var rec in recommendations.OrderBy(r => r.Severity))
+            {
+                sb.AppendLine($"{EscapeCsv(rec.DisplayName)},{EscapeCsv(rec.Severity)},{EscapeCsv(rec.Category ?? "N/A")},{EscapeCsv(rec.ResourceId ?? "N/A")},{EscapeCsv(rec.Description ?? "N/A")}");
+            }
+            
+            return Encoding.UTF8.GetBytes(sb.ToString());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting recommendations to CSV");
+            throw;
+        }
+    }
+
+    private string EscapeCsv(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+            return "";
+            
+        // If the value contains comma, newline, or double quote, wrap it in quotes and escape quotes
+        if (value.Contains(',') || value.Contains('\n') || value.Contains('\r') || value.Contains('\"'))
+        {
+            return $"\"{value.Replace("\"", "\"\"")}\"";
+        }
+        
+        return value;
+    }
 }

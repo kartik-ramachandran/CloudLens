@@ -43,6 +43,11 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
   const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [reportLoading, setReportLoading] = useState(false);
+  const [exportLoading, setExportLoading] = useState<{ excel: boolean; csv: boolean; html: boolean }>({
+    excel: false,
+    csv: false,
+    html: false
+  });
   const [error, setError] = useState('');
 
   const [controls, setControls] = useState<Soc2Control[]>([]);
@@ -84,7 +89,8 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
     }
   };
 
-  const handleExport = async (format: 'excel' | 'html') => {
+  const handleExport = async (format: 'excel' | 'html' | 'csv') => {
+    setExportLoading(prev => ({ ...prev, [format]: true }));
     try {
       console.log('[Export] Starting export with format:', format, 'credentials:', credentials);
       setError(''); // Clear previous errors
@@ -98,7 +104,8 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `SOC2_Report_${new Date().toISOString().split('T')[0]}.${format === 'excel' ? 'xlsx' : 'html'}`;
+      const extension = format === 'excel' ? 'xlsx' : format === 'csv' ? 'csv' : 'html';
+      a.download = `SOC2_Report_${new Date().toISOString().split('T')[0]}.${extension}`;
       document.body.appendChild(a); // Add to body for better browser support
       a.click();
       document.body.removeChild(a);
@@ -108,6 +115,8 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
       console.error('[Export] Error during export:', e);
       const errorMessage = e.response?.data?.error || e.message || 'Export failed. Please check the console for details.';
       setError(errorMessage);
+    } finally {
+      setExportLoading(prev => ({ ...prev, [format]: false }));
     }
   };
 
@@ -179,9 +188,17 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
           >
             Generate Report (AI)
           </Button>
-          <Button variant="contained" startIcon={<DownloadIcon />}
-            onClick={() => handleExport('excel')} disabled={loading}>
-            Export Excel
+          <Button variant="contained" 
+            startIcon={exportLoading.excel ? <CircularProgress size={16} /> : <DownloadIcon />}
+            onClick={() => handleExport('excel')} 
+            disabled={loading || exportLoading.excel}>
+            {exportLoading.excel ? 'Exporting...' : 'Export Excel'}
+          </Button>
+          <Button variant="outlined" 
+            startIcon={exportLoading.csv ? <CircularProgress size={16} /> : <DownloadIcon />}
+            onClick={() => handleExport('csv')} 
+            disabled={loading || exportLoading.csv}>
+            {exportLoading.csv ? 'Exporting...' : 'Export CSV'}
           </Button>
         </Box>
       </Box>
@@ -332,21 +349,22 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
                       <TableCell><Typography variant="caption">{g.remediationSteps}</Typography></TableCell>
                       <TableCell><Chip label={g.status} size="small" variant="outlined" /></TableCell>
                       <TableCell align="center">
-                        <Tooltip title={gapAiInsights[gapKey] ? "View AI Analysis" : "Get AI Analysis"}>
-                          <IconButton 
-                            size="small" 
-                            onClick={() => handleGapAiAnalysis(g, i)}
-                            color={gapAiInsights[gapKey] ? "primary" : "default"}
-                          >
-                            {loadingGapAi === gapKey ? (
-                              <CircularProgress size={16} />
-                            ) : gapAiInsights[gapKey] ? (
-                              <LightbulbIcon fontSize="small" />
-                            ) : (
-                              <PsychologyIcon fontSize="small" />
-                            )}
-                          </IconButton>
-                        </Tooltip>
+                        <Button
+                          size="small"
+                          variant={gapAiInsights[gapKey] ? "contained" : "outlined"}
+                          onClick={() => handleGapAiAnalysis(g, i)}
+                          disabled={loadingGapAi === gapKey}
+                          startIcon={loadingGapAi === gapKey ? (
+                            <CircularProgress size={14} />
+                          ) : gapAiInsights[gapKey] ? (
+                            <LightbulbIcon fontSize="small" />
+                          ) : (
+                            <PsychologyIcon fontSize="small" />
+                          )}
+                          sx={{ minWidth: 100 }}
+                        >
+                          {loadingGapAi === gapKey ? 'Analyzing...' : gapAiInsights[gapKey] ? 'View AI' : 'Get AI'}
+                        </Button>
                       </TableCell>
                     </TableRow>
 
@@ -492,11 +510,23 @@ const Soc2ComplianceDashboard: React.FC<Soc2ComplianceDashboardProps> = ({ crede
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 1 }}>
-                <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => handleExport('excel')}>
-                  Export Excel
+                <Button size="small" variant="outlined" 
+                  startIcon={exportLoading.excel ? <CircularProgress size={16} /> : <DownloadIcon />} 
+                  onClick={() => handleExport('excel')}
+                  disabled={exportLoading.excel}>
+                  {exportLoading.excel ? 'Exporting...' : 'Export Excel'}
                 </Button>
-                <Button size="small" variant="outlined" startIcon={<DownloadIcon />} onClick={() => handleExport('html')}>
-                  Export HTML
+                <Button size="small" variant="outlined" 
+                  startIcon={exportLoading.csv ? <CircularProgress size={16} /> : <DownloadIcon />} 
+                  onClick={() => handleExport('csv')}
+                  disabled={exportLoading.csv}>
+                  {exportLoading.csv ? 'Exporting...' : 'Export CSV'}
+                </Button>
+                <Button size="small" variant="outlined" 
+                  startIcon={exportLoading.html ? <CircularProgress size={16} /> : <DownloadIcon />} 
+                  onClick={() => handleExport('html')}
+                  disabled={exportLoading.html}>
+                  {exportLoading.html ? 'Exporting...' : 'Export HTML'}
                 </Button>
               </Box>
             </Box>

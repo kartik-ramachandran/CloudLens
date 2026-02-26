@@ -47,6 +47,9 @@ builder.Services.AddScoped<INetworkSecurityService, NetworkSecurityService>();
 builder.Services.AddScoped<ISocIncidentService, SocIncidentService>();
 builder.Services.AddScoped<IAutoRemediationService, AutoRemediationService>();
 
+// Cost Alerts service
+builder.Services.AddScoped<ICostAlertService, CostAlertService>();
+
 builder.Services.AddHttpClient();
 
 // Configure CORS

@@ -1,17 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef,useMemo, useCallback } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip, Button, CircularProgress,
   Tabs, Tab, Table, TableBody, TableCell, TableContainer, TableHead,
   TableRow, Paper, TablePagination, TextField, InputAdornment, Alert,
-  Grid, Skeleton,
+  Grid, Skeleton, Select, MenuItem, FormControl, Badge, IconButton,
 } from '@mui/material';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell, Legend, Area, AreaChart,
 } from 'recharts';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ClearIcon from '@mui/icons-material/Clear';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -38,13 +40,31 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [resourceStartDate, setResourceStartDate] = useState('');
   const [resourceEndDate, setResourceEndDate] = useState('');
+  
+  // Filters for Tab 0 (Subscription Costs)
+  const [subscriptionFilter, setSubscriptionFilter] = useState('All');
+  const [currencyFilter, setCurrencyFilter] = useState('All');
+  
+  // Filters for Tab 1 (Resource Costs)
+  const [resourceTypeFilter, setResourceTypeFilter] = useState('All');
+  const [resourceSubFilter, setResourceSubFilter] = useState('All');
+  const [resourceGroupFilter, setResourceGroupFilter] = useState('All');
 
   const credentialsRef = useRef(credentials);
   credentialsRef.current = credentials;
 
-  const fetchCosts = async (forceRefresh: boolean = false) => {
+  // Debounce search term to improve performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  const fetchCosts = useCallback(async (forceRefresh: boolean = false) => {
     setLoading(true);
     setError('');
     try {
@@ -55,7 +75,7 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCosts(); }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
@@ -67,18 +87,60 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
     setResourceEndDate(today.toISOString().split('T')[0]);
   }, []);
 
-  const totalCost = costs.reduce((sum, c) => sum + Number(c.totalCost || 0), 0);
-  const avgPerSub = costs.length > 0 ? totalCost / costs.length : 0;
-  const subCount = costs.length;
+  // Compute unique values for Tab 0 filters
+  const uniqueSubscriptions = useMemo(() => {
+    const subs = new Set<string>();
+    subs.add('All');
+    costs.forEach(c => {
+      if (c.subscriptionName) subs.add(c.subscriptionName);
+    });
+    return Array.from(subs);
+  }, [costs]);
 
-  const getSubscriptionName = (resourceId: string): string => {
+  const uniqueCurrencies = useMemo(() => {
+    const curr = new Set<string>();
+    curr.add('All');
+    costs.forEach(c => {
+      if (c.currency) curr.add(c.currency);
+    });
+    return Array.from(curr);
+  }, [costs]);
+
+  // Compute active filter count for Tab 0
+  const activeFilterCountTab0 = useMemo(() => {
+    let count = 0;
+    if (subscriptionFilter !== 'All') count++;
+    if (currencyFilter !== 'All') count++;
+    return count;
+  }, [subscriptionFilter, currencyFilter]);
+
+  // Clear all filters for Tab 0
+  const clearFiltersTab0 = useCallback(() => {
+    setSubscriptionFilter('All');
+    setCurrencyFilter('All');
+  }, []);
+
+  // Filtered costs for Tab 0
+  const filteredCosts = useMemo(() => {
+    return costs.filter(c => {
+      const matchesSubscription = subscriptionFilter === 'All' || c.subscriptionName === subscriptionFilter;
+      const matchesCurrency = currencyFilter === 'All' || c.currency === currencyFilter;
+      return matchesSubscription && matchesCurrency;
+    });
+  }, [costs, subscriptionFilter, currencyFilter]);
+
+  const totalCost = filteredCosts.reduce((sum, c) => sum + Number(c.totalCost || 0), 0);
+  const avgPerSub = filteredCosts.length > 0 ? totalCost / filteredCosts.length : 0;
+  const subCount = filteredCosts.length;
+
+  const getSubscriptionName = useCallback((resourceId: string): string => {
     const match = resourceId.match(/\/subscriptions\/([^/]+)/);
     if (match?.[1]) {
       const sub = credentials.subscriptions?.find(s => s.subscriptionId === match[1]);
       return sub?.displayName || match[1].substring(0, 8) + '…';
     }
     return 'Unknown';
-  };
+  }, [credentials.subscriptions]);
 
   const fetchResourceCosts = async () => {
     if (!resourceStartDate || !resourceEndDate) {
@@ -101,19 +163,102 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
     }
   };
 
-  const filteredResources = resourceCosts.filter(r =>
-    (r.resourceName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.resourceType || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (r.resourceGroup || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Compute unique values for Tab 1 filters
+  const uniqueResourceTypes = useMemo(() => {
+    const types = new Set<string>();
+    types.add('All');
+    resourceCosts.forEach(r => {
+      if (r.resourceType) types.add(r.resourceType);
+    });
+    return Array.from(types);
+  }, [resourceCosts]);
 
-  const paginatedResources = filteredResources.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  const uniqueResourceSubs = useMemo(() => {
+    const subs = new Set<string>();
+    subs.add('All');
+    resourceCosts.forEach(r => {
+      const subName = getSubscriptionName(r.resourceId);
+      if (subName && subName !== 'Unknown') subs.add(subName);
+    });
+    return Array.from(subs);
+  }, [resourceCosts, getSubscriptionName]);
 
-  const serviceCostData = costs[0]?.costsByService
-    ?.filter(s => s.cost > 0)
-    .map(s => ({ name: s.serviceName, value: Number(s.cost || 0) }))
-    .sort((a, b) => b.value - a.value)
-    ?? [];
+  const uniqueResourceGroups = useMemo(() => {
+    const groups = new Set<string>();
+    groups.add('All');
+    resourceCosts.forEach(r => {
+      if (r.resourceGroup) groups.add(r.resourceGroup);
+    });
+    return Array.from(groups);
+  }, [resourceCosts]);
+
+  // Compute active filter count for Tab 1
+  const activeFilterCountTab1 = useMemo(() => {
+    let count = 0;
+    if (resourceTypeFilter !== 'All') count++;
+    if (resourceSubFilter !== 'All') count++;
+    if (resourceGroupFilter !== 'All') count++;
+    return count;
+  }, [resourceTypeFilter, resourceSubFilter, resourceGroupFilter]);
+
+  // Clear all filters for Tab 1
+  const clearFiltersTab1 = useCallback(() => {
+    setResourceTypeFilter('All');
+    setResourceSubFilter('All');
+    setResourceGroupFilter('All');
+    setSearchTerm('');
+  }, []);
+
+  const filteredResources = useMemo(() => {
+    return resourceCosts.filter(r => {
+      const searchMatch = (r.resourceName || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (r.resourceType || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase()) ||
+        (r.resourceGroup || '').toLowerCase().includes(debouncedSearchTerm.toLowerCase());
+      
+      const matchesType = resourceTypeFilter === 'All' || r.resourceType === resourceTypeFilter;
+      const matchesSub = resourceSubFilter === 'All' || getSubscriptionName(r.resourceId) === resourceSubFilter;
+      const matchesGroup = resourceGroupFilter === 'All' || r.resourceGroup === resourceGroupFilter;
+      
+      return searchMatch && matchesType && matchesSub && matchesGroup;
+    });
+  }, [resourceCosts, debouncedSearchTerm, resourceTypeFilter, resourceSubFilter, resourceGroupFilter, getSubscriptionName]);
+
+  const paginatedResources = useMemo(() => {
+    return filteredResources.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+  }, [filteredResources, page, rowsPerPage]);
+
+  // Aggregate service costs from all filtered subscriptions
+  const serviceCostData = useMemo(() => {
+    const serviceMap = new Map<string, number>();
+    filteredCosts.forEach(cost => {
+      cost.costsByService?.forEach(s => {
+        if (s.cost > 0) {
+          const current = serviceMap.get(s.serviceName) || 0;
+          serviceMap.set(s.serviceName, current + Number(s.cost));
+        }
+      });
+    });
+    return Array.from(serviceMap.entries())
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+  }, [filteredCosts]);
+
+  // Compute trend data from monthly costs
+  const trendData = useMemo(() => {
+    const monthMap = new Map<string, number>();
+    filteredCosts.forEach(cost => {
+      cost.monthlyCosts?.forEach(mc => {
+        const current = monthMap.get(mc.month) || 0;
+        monthMap.set(mc.month, current + Number(mc.cost || 0));
+      });
+    });
+    return Array.from(monthMap.entries())
+      .map(([month, cost]) => ({ 
+        month: new Date(month).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+        cost: Number(cost.toFixed(2))
+      }))
+      .sort((a, b) => new Date(a.month).getTime() - new Date(b.month).getTime());
+  }, [filteredCosts]);
 
   return (
     <Box sx={{ pb: 4 }}>
@@ -227,6 +372,49 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
         </Grid>
       </Grid>
 
+      {/* ── COST TRENDS CHART ── */}
+      {!loading && trendData.length > 0 && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent sx={{ p: 3 }}>
+            <SectionHeader icon={<TrendingUpIcon />}>Cost Trends Over Time</SectionHeader>
+            <ResponsiveContainer width="100%" height={320}>
+              <AreaChart data={trendData} margin={{ left: 12, right: 24, top: 12, bottom: 12 }}>
+                <defs>
+                  <linearGradient id="costTrendGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={DS.accent} stopOpacity={0.4} />
+                    <stop offset="100%" stopColor={DS.accent} stopOpacity={0.05} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(0,0,0,0.08)" />
+                <XAxis 
+                  dataKey="month" 
+                  tick={{ fontSize: 11, fill: '#666' }} 
+                  angle={-15}
+                  textAnchor="end"
+                  height={60}
+                />
+                <YAxis 
+                  tick={{ fontSize: 11, fill: '#666' }} 
+                  tickFormatter={(v: number) => `$${Number(v).toLocaleString()}`}
+                />
+                <Tooltip 
+                  formatter={(v: number) => [`$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Total Cost']}
+                  contentStyle={{ borderRadius: '8px', border: DS.border, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Area 
+                  type="monotone" 
+                  dataKey="cost" 
+                  stroke={DS.accent} 
+                  strokeWidth={2.5}
+                  fill="url(#costTrendGrad)" 
+                  name="Total Cost"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── TABS ── */}
       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
         <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={styledTabsSx}>
@@ -269,9 +457,54 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                         <StyledHeadCell align="right" width="22%">Total Cost</StyledHeadCell>
                         <StyledHeadCell align="center" width="12%">Currency</StyledHeadCell>
                       </TableRow>
+                      <TableRow sx={{ bgcolor: 'background.default' }}>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <FormControl fullWidth size="small">
+                            <Select 
+                              value={subscriptionFilter} 
+                              displayEmpty
+                              onChange={e => setSubscriptionFilter(e.target.value)}
+                              sx={{ bgcolor: 'background.paper' }}
+                            >
+                              {uniqueSubscriptions.map(sub => (
+                                <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                            {activeFilterCountTab0 > 0 && (
+                              <IconButton size="small" onClick={clearFiltersTab0} title="Clear all filters">
+                                <ClearIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            )}
+                            {activeFilterCountTab0 > 0 && (
+                              <Badge badgeContent={activeFilterCountTab0} color="primary">
+                                <FilterListIcon sx={{ fontSize: 16 }} />
+                              </Badge>
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }} />
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <FormControl fullWidth size="small">
+                            <Select 
+                              value={currencyFilter} 
+                              displayEmpty
+                              onChange={e => setCurrencyFilter(e.target.value)}
+                              sx={{ bgcolor: 'background.paper' }}
+                            >
+                              {uniqueCurrencies.map(curr => (
+                                <MenuItem key={curr} value={curr}>{curr}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                      </TableRow>
                     </TableHead>
                     <TableBody>
-                      {costs.map((cost, idx) => (
+                      {filteredCosts.map((cost, idx) => (
                         <TableRow key={`${cost.subscriptionId}-${idx}`} sx={styledRowSx}>
                           <TableCell sx={{ py: 1.5 }}>
                             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.25 }}>
@@ -374,21 +607,6 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
               </Box>
             ) : resourceCosts.length > 0 ? (
               <>
-                <TextField
-                  fullWidth size="small" variant="outlined"
-                  placeholder="Search by name, type, or group…"
-                  value={searchTerm}
-                  onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
-                  sx={{ mb: 2 }}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon sx={{ color: 'text.disabled', fontSize: 20 }} />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
-
                 <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 2 }}>
                   <Table sx={{ minWidth: 750 }}>
                     <TableHead>
@@ -399,6 +617,83 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                         <StyledHeadCell width="16%">Resource Group</StyledHeadCell>
                         <StyledHeadCell align="right" width="12%">Total Cost</StyledHeadCell>
                         <StyledHeadCell align="center" width="5%">CCY</StyledHeadCell>
+                      </TableRow>
+                      <TableRow sx={{ bgcolor: 'background.default' }}>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <TextField
+                            fullWidth
+                            size="small" 
+                            variant="outlined"
+                            placeholder="Search name…"
+                            value={searchTerm} 
+                            onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
+                            InputProps={{
+                              startAdornment: (
+                                <InputAdornment position="start">
+                                  <SearchIcon sx={{ fontSize: 16 }} />
+                                </InputAdornment>
+                              ),
+                            }}
+                            sx={{ bgcolor: 'background.paper' }}
+                          />
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <FormControl fullWidth size="small">
+                            <Select 
+                              value={resourceSubFilter} 
+                              displayEmpty
+                              onChange={e => { setResourceSubFilter(e.target.value); setPage(0); }}
+                              sx={{ bgcolor: 'background.paper' }}
+                            >
+                              {uniqueResourceSubs.map(sub => (
+                                <MenuItem key={sub} value={sub}>{sub}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <FormControl fullWidth size="small">
+                            <Select 
+                              value={resourceTypeFilter} 
+                              displayEmpty
+                              onChange={e => { setResourceTypeFilter(e.target.value); setPage(0); }}
+                              sx={{ bgcolor: 'background.paper' }}
+                            >
+                              {uniqueResourceTypes.map(type => (
+                                <MenuItem key={type} value={type}>{type}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <FormControl fullWidth size="small">
+                            <Select 
+                              value={resourceGroupFilter} 
+                              displayEmpty
+                              onChange={e => { setResourceGroupFilter(e.target.value); setPage(0); }}
+                              sx={{ bgcolor: 'background.paper' }}
+                            >
+                              {uniqueResourceGroups.map(group => (
+                                <MenuItem key={group} value={group}>{group}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                            {activeFilterCountTab1 > 0 && (
+                              <IconButton size="small" onClick={clearFiltersTab1} title="Clear all filters">
+                                <ClearIcon sx={{ fontSize: 16 }} />
+                              </IconButton>
+                            )}
+                            {activeFilterCountTab1 > 0 && (
+                              <Badge badgeContent={activeFilterCountTab1} color="primary">
+                                <FilterListIcon sx={{ fontSize: 16 }} />
+                              </Badge>
+                            )}
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ py: 1, px: 1 }} />
                       </TableRow>
                     </TableHead>
                     <TableBody>

@@ -39,8 +39,14 @@ const RemediationTracker: React.FC<RemediationTrackerProps> = ({ credentials }) 
 
   const load = async () => {
     setLoading(true);
-    try { setItems(await getRemediationItems(credentials)); }
-    catch (e) { console.error(e); }
+    try { 
+      const result = await getRemediationItems(credentials);
+      setItems(Array.isArray(result) ? result : []); 
+    }
+    catch (e) { 
+      console.error(e); 
+      setItems([]);
+    }
     finally { setLoading(false); }
   };
 

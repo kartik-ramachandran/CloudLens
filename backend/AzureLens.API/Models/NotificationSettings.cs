@@ -45,7 +45,8 @@ public class ExportRequest
 public enum ExportFormat
 {
     PDF,
-    Excel
+    Excel,
+    CSV
 }
 
 public enum ExportType

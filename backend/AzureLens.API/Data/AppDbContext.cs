@@ -31,6 +31,10 @@ public class AppDbContext : DbContext
     public DbSet<SocIncident> SocIncidents { get; set; }
     public DbSet<RemediationAttempt> RemediationAttempts { get; set; }
 
+    // Cost Alerts
+    public DbSet<CostAlertRule> CostAlertRules { get; set; }
+    public DbSet<CostAlertHistory> CostAlertHistory { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -137,6 +141,32 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.Tier);
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.AttemptedAt);
+        });
+
+        modelBuilder.Entity<CostAlertRule>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.SessionId);
+            entity.HasIndex(e => e.IsEnabled);
+            entity.HasIndex(e => e.AlertType);
+            entity.HasIndex(e => e.SubscriptionId);
+            entity.HasIndex(e => e.LastCheckedAt);
+            entity.Property(e => e.ThresholdAmount).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<CostAlertHistory>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.AlertRuleId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.TriggeredAt);
+            entity.Property(e => e.ActualAmount).HasColumnType("decimal(18,2)");
+            entity.Property(e => e.ThresholdAmount).HasColumnType("decimal(18,2)");
+            
+            entity.HasOne(e => e.AlertRule)
+                .WithMany()
+                .HasForeignKey(e => e.AlertRuleId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -1,12 +1,14 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box, Card, CardContent, Typography, Chip,
   TextField, InputAdornment, Accordion, AccordionSummary,
   AccordionDetails, TablePagination, CircularProgress, Alert,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Paper,
-  Button,
+  Button, Select, MenuItem, FormControl, Badge, IconButton,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
+import FilterListIcon from '@mui/icons-material/FilterList';
+import ClearIcon from '@mui/icons-material/Clear';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import WarningIcon from '@mui/icons-material/Warning';
 import ErrorIcon from '@mui/icons-material/Error';
@@ -33,6 +35,11 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  
+  // Filters
+  const [categoryFilter, setCategoryFilter] = useState('All');
+  const [severityFilter, setSeverityFilter] = useState('All');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const credentialsRef = useRef(credentials);
   credentialsRef.current = credentials;
@@ -55,11 +62,62 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
     fetchRecommendations();
   }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]);
 
-  const filteredRecommendations = recommendations.filter(rec =>
-    rec.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    rec.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    rec.category.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // Compute unique values for filters
+  const uniqueCategories = useMemo(() => {
+    const cats = new Set<string>();
+    cats.add('All');
+    recommendations.forEach(rec => {
+      if (rec.category) cats.add(rec.category);
+    });
+    return Array.from(cats);
+  }, [recommendations]);
+
+  const uniqueSeverities = useMemo(() => {
+    const sevs = new Set<string>();
+    sevs.add('All');
+    recommendations.forEach(rec => {
+      if (rec.severity) sevs.add(rec.severity);
+    });
+    return Array.from(sevs);
+  }, [recommendations]);
+
+  const uniqueStatuses = useMemo(() => {
+    const stats = new Set<string>();
+    stats.add('All');
+    recommendations.forEach(rec => {
+      if (rec.status) stats.add(rec.status);
+    });
+    return Array.from(stats);
+  }, [recommendations]);
+
+  // Compute active filter count
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (categoryFilter !== 'All') count++;
+    if (severityFilter !== 'All') count++;
+    if (statusFilter !== 'All') count++;
+    return count;
+  }, [categoryFilter, severityFilter, statusFilter]);
+
+  // Clear all filters
+  const clearFilters = () => {
+    setCategoryFilter('All');
+    setSeverityFilter('All');
+    setStatusFilter('All');
+    setSearchTerm('');
+  };
+
+  const filteredRecommendations = recommendations.filter(rec => {
+    const searchMatch = rec.displayName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      rec.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      rec.category.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const matchesCategory = categoryFilter === 'All' || rec.category === categoryFilter;
+    const matchesSeverity = severityFilter === 'All' || rec.severity === severityFilter;
+    const matchesStatus = statusFilter === 'All' || rec.status === statusFilter;
+    
+    return searchMatch && matchesCategory && matchesSeverity && matchesStatus;
+  });
 
   const displayRecommendations = filteredRecommendations.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
@@ -122,6 +180,81 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
                   <StyledHeadCell>Recommendation</StyledHeadCell>
                   <StyledHeadCell>Category</StyledHeadCell>
                   <StyledHeadCell align="center">Severity</StyledHeadCell>
+                  <StyledHeadCell align="center">Status</StyledHeadCell>
+                </TableRow>
+                <TableRow sx={{ bgcolor: 'background.default' }}>
+                  <TableCell sx={{ py: 1, px: 1 }}>
+                    <TextField
+                      fullWidth
+                      size="small" 
+                      variant="outlined"
+                      placeholder="Search…"
+                      value={searchTerm} 
+                      onChange={e => { setSearchTerm(e.target.value); setPage(0); }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <SearchIcon sx={{ fontSize: 16 }} />
+                          </InputAdornment>
+                        ),
+                      }}
+                      sx={{ bgcolor: 'background.paper' }}
+                    />
+                  </TableCell>
+                  <TableCell sx={{ py: 1, px: 1 }}>
+                    <FormControl fullWidth size="small">
+                      <Select 
+                        value={categoryFilter} 
+                        displayEmpty
+                        onChange={e => { setCategoryFilter(e.target.value); setPage(0); }}
+                        sx={{ bgcolor: 'background.paper' }}
+                      >
+                        {uniqueCategories.map(cat => (
+                          <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </TableCell>
+                  <TableCell sx={{ py: 1, px: 1 }}>
+                    <FormControl fullWidth size="small">
+                      <Select 
+                        value={severityFilter} 
+                        displayEmpty
+                        onChange={e => { setSeverityFilter(e.target.value); setPage(0); }}
+                        sx={{ bgcolor: 'background.paper' }}
+                      >
+                        {uniqueSeverities.map(sev => (
+                          <MenuItem key={sev} value={sev}>{sev}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </TableCell>
+                  <TableCell sx={{ py: 1, px: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}>
+                      <FormControl fullWidth size="small" sx={{ flex: 1 }}>
+                        <Select 
+                          value={statusFilter} 
+                          displayEmpty
+                          onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
+                          sx={{ bgcolor: 'background.paper' }}
+                        >
+                          {uniqueStatuses.map(stat => (
+                            <MenuItem key={stat} value={stat}>{stat}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {activeFilterCount > 0 && (
+                        <IconButton size="small" onClick={clearFilters} title="Clear all filters">
+                          <ClearIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      )}
+                      {activeFilterCount > 0 && (
+                        <Badge badgeContent={activeFilterCount} color="primary">
+                          <FilterListIcon sx={{ fontSize: 16 }} />
+                        </Badge>
+                      )}
+                    </Box>
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -142,6 +275,9 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
                         sx={{ bgcolor: SEVERITY_COLOR[rec.severity.toLowerCase()] || DS.accent, color: 'white', fontWeight: 600, fontSize: '0.68rem' }}
                       />
                     </TableCell>
+                    <TableCell align="center" sx={{ py: 1.5 }}>
+                      <Chip label={rec.status} size="small" sx={{ background: DS.gradSubtle, border: DS.border, fontSize: '0.68rem' }} />
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -150,6 +286,57 @@ const RecommendationsTab: React.FC<RecommendationsTabProps> = ({
         ) : (
           /* Full mode: Accordions */
           <Box>
+            {/* Filter Controls for Full Mode */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <Select 
+                  value={categoryFilter} 
+                  displayEmpty
+                  onChange={e => { setCategoryFilter(e.target.value); setPage(0); }}
+                >
+                  {uniqueCategories.map(cat => (
+                    <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select 
+                  value={severityFilter} 
+                  displayEmpty
+                  onChange={e => { setSeverityFilter(e.target.value); setPage(0); }}
+                >
+                  {uniqueSeverities.map(sev => (
+                    <MenuItem key={sev} value={sev}>{sev}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 120 }}>
+                <Select 
+                  value={statusFilter} 
+                  displayEmpty
+                  onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
+                >
+                  {uniqueStatuses.map(stat => (
+                    <MenuItem key={stat} value={stat}>{stat}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {activeFilterCount > 0 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Badge badgeContent={activeFilterCount} color="primary">
+                    <FilterListIcon sx={{ fontSize: 18 }} />
+                  </Badge>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    startIcon={<ClearIcon />}
+                    onClick={clearFilters}
+                  >
+                    Clear Filters
+                  </Button>
+                </Box>
+              )}
+            </Box>
             {displayRecommendations.map(rec => (
               <Accordion key={rec.id} sx={{
                 mb: 1, border: DS.border, borderRadius: '8px !important',

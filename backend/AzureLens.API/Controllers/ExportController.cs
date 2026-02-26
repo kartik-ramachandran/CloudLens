@@ -56,6 +56,12 @@ public class ExportController : ControllerBase
                 contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                 fileName = $"azure-resources-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
             }
+            else if (request.Format == ExportFormat.CSV)
+            {
+                fileBytes = await _exportService.ExportResourcesToCsvAsync(resources, "Azure Resources");
+                contentType = "text/csv";
+                fileName = $"azure-resources-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
+            }
             else
             {
                 fileBytes = await _exportService.ExportResourcesToPdfAsync(resources, "Azure Resources");
@@ -103,6 +109,12 @@ public class ExportController : ControllerBase
                 contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                 fileName = $"azure-costs-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
             }
+            else if (request.Format == ExportFormat.CSV)
+            {
+                fileBytes = await _exportService.ExportCostsToCsvAsync(costs, startDate, endDate);
+                contentType = "text/csv";
+                fileName = $"azure-costs-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
+            }
             else
             {
                 fileBytes = await _exportService.ExportCostsToPdfAsync(costs, startDate, endDate);
@@ -142,6 +154,12 @@ public class ExportController : ControllerBase
                 fileBytes = await _exportService.ExportRecommendationsToExcelAsync(recommendations);
                 contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
                 fileName = $"azure-recommendations-{DateTime.UtcNow:yyyyMMdd-HHmmss}.xlsx";
+            }
+            else if (request.Format == ExportFormat.CSV)
+            {
+                fileBytes = await _exportService.ExportRecommendationsToCsvAsync(recommendations);
+                contentType = "text/csv";
+                fileName = $"azure-recommendations-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv";
             }
             else
             {
