@@ -1,8 +1,11 @@
-import React, { useState, useMemo } from 'react';
-import { CssBaseline, ThemeProvider, createTheme, PaletteMode } from '@mui/material';
-import LoginForm from './components/LoginForm';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import { CssBaseline, ThemeProvider, createTheme, PaletteMode, Box, CircularProgress, Typography } from '@mui/material';
 import Dashboard from './components/Dashboard';
+import SsoLoginPage from './components/SsoLoginPage';
+import OAuthCallback from './components/OAuthCallback';
 import { AzureCredentials } from './types';
+import { checkGlobalCredentials } from './services/api';
+import { isAuthenticated, clearAuth, getStoredUser } from './utils/oauth';
 
 const getTheme = (mode: PaletteMode) => createTheme({
   palette: {
@@ -26,9 +29,7 @@ const getTheme = (mode: PaletteMode) => createTheme({
   typography: {
     fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
   },
-  shape: {
-    borderRadius: 10,
-  },
+  shape: { borderRadius: 10 },
   components: {
     MuiCard: {
       styleOverrides: {
@@ -41,18 +42,12 @@ const getTheme = (mode: PaletteMode) => createTheme({
       },
     },
     MuiChip: {
-      styleOverrides: {
-        root: { borderRadius: 8 },
-      },
+      styleOverrides: { root: { borderRadius: 8 } },
     },
     MuiButton: {
-      styleOverrides: {
-        root: { borderRadius: 8, textTransform: 'none', fontWeight: 600 },
-      },
+      styleOverrides: { root: { borderRadius: 8, textTransform: 'none', fontWeight: 600 } },
     },
-    MuiTextField: {
-      defaultProps: { size: 'small' },
-    },
+    MuiTextField: { defaultProps: { size: 'small' } },
     MuiTableCell: {
       styleOverrides: {
         root: { borderColor: mode === 'light' ? 'rgba(102,126,234,0.12)' : 'rgba(255,255,255,0.06)' },
@@ -61,77 +56,123 @@ const getTheme = (mode: PaletteMode) => createTheme({
   },
 });
 
+// ── View states ───────────────────────────────────────────────────────────────
+type View = 'loading' | 'sso-login' | 'oauth-callback' | 'dashboard';
+
+function isOAuthCallbackUrl(): boolean {
+  const params = new URLSearchParams(window.location.search);
+  return params.has('code') && params.has('state');
+}
+
+// ── App ───────────────────────────────────────────────────────────────────────
 function App() {
   const [darkMode, setDarkMode] = useState<PaletteMode>(() => {
     const saved = localStorage.getItem('darkMode');
     return (saved === 'dark' ? 'dark' : 'light') as PaletteMode;
   });
 
-  const [credentials, setCredentials] = useState<AzureCredentials | null>(() => {
-    // Try to load session from localStorage
-    const savedSession = localStorage.getItem('azureSession');
-    if (savedSession) {
-      try {
-        const session = JSON.parse(savedSession);
-        // Return a credentials object with only sessionId, subscriptionIds, and subscriptions
-        return {
-          sessionId: session.sessionId,
-          subscriptionIds: session.subscriptionIds,
-          subscriptions: session.subscriptions,
-          tenantId: '', // Not needed for subsequent requests
-          clientId: '',
-          clientSecret: ''
-        };
-      } catch (e) {
-        console.error('Failed to parse saved session');
-        localStorage.removeItem('azureSession');
-        return null;
-      }
-    }
-    return null;
-  });
-  const [isConnected, setIsConnected] = useState(() => {
-    return localStorage.getItem('azureSession') !== null;
-  });
+  const [view, setView] = useState<View>('loading');
+  const [credentials, setCredentials] = useState<AzureCredentials | null>(null);
 
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
 
-  const toggleDarkMode = () => {
-    setDarkMode((prev) => {
-      const newMode = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('darkMode', newMode);
-      return newMode;
-    });
-  };
+  // Detect OAuth callback before anything else
+  useEffect(() => {
+    if (isOAuthCallbackUrl()) {
+      setView('oauth-callback');
+      return;
+    }
+    bootstrap();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const handleConnect = (creds: AzureCredentials) => {
-    setCredentials(creds);
-    setIsConnected(true);
-    // Store ONLY sessionId, subscriptionIds, and subscription info
-    localStorage.setItem('azureSession', JSON.stringify({
-      sessionId: creds.sessionId,
-      subscriptionIds: creds.subscriptionIds,
-      subscriptions: creds.subscriptions
-    }));
-  };
+  const bootstrap = useCallback(async () => {
+    // 1. User must have a valid JWT
+    if (!isAuthenticated()) {
+      setView('sso-login');
+      return;
+    }
 
-  const handleDisconnect = () => {
+    // 2. Load global Azure credentials
+    try {
+      const result = await checkGlobalCredentials();
+      if (result.exists && result.subscriptions) {
+        const creds: AzureCredentials = {
+          sessionId: 'global-' + Date.now(),
+          subscriptionIds: result.subscriptions.map((s: any) => s.subscriptionId),
+          subscriptions: result.subscriptions,
+          tenantId: '',
+          clientId: '',
+          clientSecret: '',
+        };
+        setCredentials(creds);
+        setView('dashboard');
+      } else {
+        // Authenticated but no Azure credentials — admin needs to configure them
+        setCredentials({
+          sessionId: 'global-pending',
+          subscriptionIds: [],
+          subscriptions: [],
+          tenantId: '',
+          clientId: '',
+          clientSecret: '',
+        });
+        setView('dashboard');
+      }
+    } catch {
+      setView('dashboard');
+    }
+  }, []);
+
+  // After OAuth callback completes successfully, re-run bootstrap
+  const handleAuthSuccess = useCallback(() => {
+    setView('loading');
+    bootstrap();
+  }, [bootstrap]);
+
+  const handleAuthError = useCallback(() => {
+    clearAuth();
+    setView('sso-login');
+  }, []);
+
+  const handleDisconnect = useCallback(() => {
+    clearAuth();
     setCredentials(null);
-    setIsConnected(false);
-    localStorage.removeItem('azureSession');
-  };
+    setView('sso-login');
+  }, []);
+
+  const toggleDarkMode = useCallback(() => {
+    setDarkMode(prev => {
+      const next = prev === 'light' ? 'dark' : 'light';
+      localStorage.setItem('darkMode', next);
+      return next as PaletteMode;
+    });
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      {!isConnected ? (
-        <LoginForm onConnect={handleConnect} />
-      ) : (
-        <Dashboard 
-          credentials={credentials!} 
+
+      {view === 'loading' && (
+        <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 2 }}>
+          <CircularProgress size={60} />
+          <Typography variant="h6" color="text.secondary">Loading AzureLens…</Typography>
+        </Box>
+      )}
+
+      {view === 'sso-login' && <SsoLoginPage />}
+
+      {view === 'oauth-callback' && (
+        <OAuthCallback onSuccess={handleAuthSuccess} onError={handleAuthError} />
+      )}
+
+      {view === 'dashboard' && (
+        <Dashboard
+          credentials={credentials!}
           onDisconnect={handleDisconnect}
           darkMode={darkMode === 'dark'}
           onToggleDarkMode={toggleDarkMode}
+          currentUser={getStoredUser()}
         />
       )}
     </ThemeProvider>

@@ -16,6 +16,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CloseIcon from '@mui/icons-material/Close';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SavingsIcon from '@mui/icons-material/Savings';
 import TimelineIcon from '@mui/icons-material/Timeline';
 import LabelIcon from '@mui/icons-material/Label';
@@ -276,7 +277,7 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
               progress={Math.min((metrics.totalWaste / 5000) * 100, 100)} loading={loading} />
           </Grid>
           <Grid item xs={12} sm={6} md={3}>
-            <KpiCard label="Savings Opportunity" value={`${formatCurrency(metrics.potentialMonthlySavings)}/mo`}
+            <KpiCard label="Monthly Savings Opportunity" value={`${formatCurrency(metrics.potentialMonthlySavings)}`}
               subtext={`${metrics.advisorRecommendationCount} Advisor recs`}
               icon={<SavingsIcon />} ringColor="#107c10"
               progress={Math.min((metrics.potentialMonthlySavings / 3000) * 100, 100)} loading={loading} />
@@ -324,6 +325,7 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
                     <StyledHeadCell align="right">Est. Monthly Cost</StyledHeadCell>
                     <StyledHeadCell align="center">Severity</StyledHeadCell>
                     <StyledHeadCell>Recommendation</StyledHeadCell>
+                    <StyledHeadCell align="center">Portal</StyledHeadCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -352,6 +354,20 @@ const FinOpsDashboard: React.FC<FinOpsDashboardProps> = ({ credentials }) => {
                       </TableCell>
                       <TableCell sx={{ py: 1.5 }}>
                         <Typography variant="caption" color="text.secondary">{r.recommendation}</Typography>
+                      </TableCell>
+                      <TableCell align="center" sx={{ py: 1.5 }}>
+                        <Tooltip title="Open in Azure Portal">
+                          <IconButton
+                            size="small"
+                            component="a"
+                            href={`https://portal.azure.com/#resource${r.resourceId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            sx={{ color: '#0078d4' }}
+                          >
+                            <OpenInNewIcon sx={{ fontSize: 16 }} />
+                          </IconButton>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}

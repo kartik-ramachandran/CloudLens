@@ -1,3 +1,37 @@
+// ── Auth / SSO types ─────────────────────────────────────────────────────────
+
+export type UserRole = 'Viewer' | 'Editor' | 'Admin';
+
+export interface AuthUser {
+  id: number;
+  email: string;
+  name: string;
+  profilePictureUrl?: string;
+  provider: string;
+  role: UserRole;
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt: string;
+  organizationName?: string;
+}
+
+export interface LoginResponse {
+  success: boolean;
+  token?: string;
+  user?: AuthUser;
+  error?: string;
+}
+
+export interface SsoProvider {
+  provider: string;
+  clientId: string;
+  authority?: string;
+  redirectUri?: string;
+  scopes: string[];
+}
+
+// ── Azure credential types ────────────────────────────────────────────────────
+
 export interface SubscriptionInfo {
   subscriptionId: string;
   displayName: string;

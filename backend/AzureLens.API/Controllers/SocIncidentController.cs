@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using AzureLens.API.Models;
 using AzureLens.API.Services;
+using AzureLens.API.Data;
+using AzureLens.API.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AzureLens.API.Controllers;
 
@@ -10,32 +14,35 @@ public class SocIncidentController : ControllerBase
 {
     private readonly ISocIncidentService _socIncidentService;
     private readonly ICredentialCacheService _credentialCache;
+    private readonly AppDbContext _dbContext;
     private readonly ILogger<SocIncidentController> _logger;
 
     public SocIncidentController(
         ISocIncidentService socIncidentService,
         ICredentialCacheService credentialCache,
+        AppDbContext dbContext,
         ILogger<SocIncidentController> logger)
     {
         _socIncidentService = socIncidentService;
         _credentialCache = credentialCache;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
     [HttpPost("incidents")]
-    public async Task<ActionResult<List<SocIncidentDto>>> GetIncidents([FromBody] GetIncidentsRequest request)
+    public async Task<ActionResult<List<SocIncidentDto>>> GetIncidents([FromBody] GetIncidentsRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
-                return Unauthorized("Invalid session");
+                return Unauthorized("No active credentials found");
 
-            var subscriptionId = request.SubscriptionIds?.FirstOrDefault();
+            var subscriptionId = request?.SubscriptionIds?.FirstOrDefault();
             
             var incidents = await _socIncidentService.GetIncidentsAsync(
-                request.Tier,
-                request.Status,
+                request?.Tier,
+                request?.Status,
                 subscriptionId);
 
             return Ok(incidents);
@@ -48,13 +55,13 @@ public class SocIncidentController : ControllerBase
     }
 
     [HttpPost("incident/{id}")]
-    public async Task<ActionResult<SocIncidentDto>> GetIncidentById([FromBody] SubscriptionRequest request, int id)
+    public async Task<ActionResult<SocIncidentDto>> GetIncidentById([FromBody] SubscriptionRequest? request, int id)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
-                return Unauthorized("Invalid session");
+                return Unauthorized("No active credentials found");
 
             var incident = await _socIncidentService.GetIncidentByIdAsync(id);
             
@@ -86,15 +93,13 @@ public class SocIncidentController : ControllerBase
     }
 
     [HttpPost("incident/{id}/remediate-soc1")]
-    public async Task<ActionResult<RemediationAttemptDto>> RemediateSoc1([FromBody] SubscriptionRequest request, int id)
+    public async Task<ActionResult<RemediationAttemptDto>> RemediateSoc1([FromBody] SubscriptionRequest? request, int id)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
-                return Unauthorized("Invalid session");
-
-            credentials.SubscriptionIds = request.SubscriptionIds;
+                return Unauthorized("No active credentials found");
 
             var attempt = await _socIncidentService.ProcessSoc1RemediationAsync(id, credentials);
             return Ok(attempt);
@@ -171,15 +176,15 @@ public class SocIncidentController : ControllerBase
     }
 
     [HttpPost("dashboard")]
-    public async Task<ActionResult<SocDashboardStats>> GetDashboardStats([FromBody] SubscriptionRequest request)
+    public async Task<ActionResult<SocDashboardStats>> GetDashboardStats([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
-                return Unauthorized("Invalid session");
+                return Unauthorized("No active credentials found");
 
-            var subscriptionId = request.SubscriptionIds?.FirstOrDefault();
+            var subscriptionId = request?.SubscriptionIds?.FirstOrDefault();
             
             var stats = await _socIncidentService.GetDashboardStatsAsync(subscriptionId);
             return Ok(stats);
@@ -189,6 +194,27 @@ public class SocIncidentController : ControllerBase
             _logger.LogError(ex, "Error getting SOC dashboard stats");
             return StatusCode(500, new { error = ex.Message });
         }
+    }
+
+    private async Task<AzureCredentials?> GetGlobalCredentialsAsync(List<string>? subscriptionIds = null)
+    {
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null)
+        {
+            return null;
+        }
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = subscriptionIds 
+                ?? JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
     }
 }
 

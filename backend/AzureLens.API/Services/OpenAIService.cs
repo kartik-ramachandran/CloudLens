@@ -45,6 +45,7 @@ public class OpenAIService : IAIService
             return settings.Provider.ToLower() switch
             {
                 "openai" => await GenerateOpenAIRecommendationsAsync(settings, prompt),
+                "azureopenai" => await GenerateAzureOpenAIRecommendationsAsync(settings, prompt),
                 "anthropic" => await GenerateAnthropicRecommendationsAsync(settings, prompt),
                 "bedrock" => await GenerateBedrockRecommendationsAsync(settings, prompt),
                 _ => throw new Exception($"Unsupported AI provider: {settings.Provider}")
@@ -89,6 +90,41 @@ public class OpenAIService : IAIService
 
         var endpoint = settings.Endpoint ?? "https://api.openai.com/v1/chat/completions";
         var response = await httpClient.PostAsync(endpoint, content);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
+
+        if (apiResponse?.Choices != null && apiResponse.Choices.Length > 0)
+        {
+            var messageContent = apiResponse.Choices[0].Message.Content;
+            var recommendationsWrapper = JsonSerializer.Deserialize<RecommendationsWrapper>(messageContent, _jsonOptions);
+            return recommendationsWrapper?.Recommendations ?? new List<AIRecommendation>();
+        }
+
+        return new List<AIRecommendation>();
+    }
+
+    private async Task<List<AIRecommendation>> GenerateAzureOpenAIRecommendationsAsync(AISettings settings, string prompt)
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Add("api-key", settings.ApiKey);
+
+        var requestBody = new
+        {
+            messages = new[]
+            {
+                new { role = "system", content = "You are an Azure cloud architect expert specializing in cost optimization, performance tuning, and best practices. Provide actionable recommendations in JSON format." },
+                new { role = "user", content = prompt }
+            },
+            max_tokens = settings.MaxTokens,
+            temperature = settings.Temperature,
+            response_format = new { type = "json_object" }
+        };
+
+        var endpoint = settings.Endpoint ?? throw new Exception("Azure OpenAI requires an endpoint URL. Please configure it in Settings.");
+        var response = await httpClient.PostAsync(endpoint, new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"));
         response.EnsureSuccessStatusCode();
 
         var responseContent = await response.Content.ReadAsStringAsync();
@@ -244,6 +280,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
             return settings.Provider.ToLower() switch
             {
                 "openai" => await GenerateOpenAIRecommendationsAsync(settings, prompt),
+                "azureopenai" => await GenerateAzureOpenAIRecommendationsAsync(settings, prompt),
                 "anthropic" => await GenerateAnthropicRecommendationsAsync(settings, prompt),
                 _ => throw new Exception($"Unsupported AI provider: {settings.Provider}")
             };
@@ -266,14 +303,17 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
             var prompt = BuildComplianceNarrativePrompt(controls, overallPercent);
             var httpClient = _httpClientFactory.CreateClient();
 
-            if (settings.Provider.ToLower() == "openai")
+            if (settings.Provider.ToLower() == "openai" || settings.Provider.ToLower() == "azureopenai")
             {
                 httpClient.DefaultRequestHeaders.Clear();
-                httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {settings.ApiKey}");
+                if (settings.Provider.ToLower() == "azureopenai")
+                    httpClient.DefaultRequestHeaders.Add("api-key", settings.ApiKey);
+                else
+                    httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {settings.ApiKey}");
 
                 var requestBody = new
                 {
-                    model = settings.Model,
+                    model = settings.Provider.ToLower() == "azureopenai" ? (object?)null : settings.Model,
                     messages = new[]
                     {
                         new { role = "system", content = "You are a SOC2 compliance expert. Generate clear, professional executive summaries for compliance reports." },
@@ -283,8 +323,11 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
                     temperature = 0.4
                 };
 
-                var response = await httpClient.PostAsync(
-                    settings.Endpoint ?? "https://api.openai.com/v1/chat/completions",
+                var endpoint = settings.Provider.ToLower() == "azureopenai"
+                    ? (settings.Endpoint ?? throw new Exception("Azure OpenAI requires an endpoint URL"))
+                    : (settings.Endpoint ?? "https://api.openai.com/v1/chat/completions");
+
+                var response = await httpClient.PostAsync(endpoint,
                     new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"));
 
                 if (!response.IsSuccessStatusCode) return $"SOC2 compliance: {overallPercent:F1}%";
@@ -396,6 +439,7 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
             return settings.Provider.ToLower() switch
             {
                 "openai" => await GenerateOpenAIRemediationSuggestionsAsync(settings, prompt),
+                "azureopenai" => await GenerateAzureOpenAIRemediationSuggestionsAsync(settings, prompt),
                 "anthropic" => await GenerateAnthropicRemediationSuggestionsAsync(settings, prompt),
                 "bedrock" => throw new NotImplementedException("AWS Bedrock provider not yet implemented"),
                 _ => throw new Exception($"Unsupported AI provider: {settings.Provider}")
@@ -456,6 +500,48 @@ Respond ONLY with valid JSON in this exact format (no markdown, no code blocks):
             catch (JsonException)
             {
                 _logger.LogWarning("Remediation JSON was truncated; extracting partial suggestions.");
+                return ParsePartialSuggestions(messageContent);
+            }
+        }
+
+        return new List<RemediationSuggestion>();
+    }
+
+    private async Task<List<RemediationSuggestion>> GenerateAzureOpenAIRemediationSuggestionsAsync(AISettings settings, string prompt)
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Add("api-key", settings.ApiKey);
+
+        var requestBody = new
+        {
+            messages = new[]
+            {
+                new { role = "system", content = "You are an expert Azure security and compliance architect specializing in SOC2, ISO27001, and cloud security remediation. Provide detailed, actionable remediation steps with Azure CLI and PowerShell commands." },
+                new { role = "user", content = prompt }
+            },
+            max_tokens = Math.Max(settings.MaxTokens, 4096),
+            temperature = 0.3,
+            response_format = new { type = "json_object" }
+        };
+
+        var endpoint = settings.Endpoint ?? throw new Exception("Azure OpenAI requires an endpoint URL. Please configure it in Settings.");
+        var response = await httpClient.PostAsync(endpoint, new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"));
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync();
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
+
+        if (apiResponse?.Choices != null && apiResponse.Choices.Length > 0)
+        {
+            var messageContent = apiResponse.Choices[0].Message.Content;
+            try
+            {
+                var suggestionsWrapper = JsonSerializer.Deserialize<RemediationSuggestionsWrapper>(messageContent, _jsonOptions);
+                return suggestionsWrapper?.Suggestions ?? new List<RemediationSuggestion>();
+            }
+            catch (JsonException)
+            {
                 return ParsePartialSuggestions(messageContent);
             }
         }

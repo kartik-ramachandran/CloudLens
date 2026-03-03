@@ -54,19 +54,22 @@ import AvailabilityReport from './AvailabilityReport';
 import VulnerabilityManagement from './VulnerabilityManagement';
 import NetworkSecurityReport from './NetworkSecurityReport';
 import SocIncidentDashboard from './SocIncidentDashboard';
+import AzureCredentialsModal from './AzureCredentialsModal';
 
 interface DashboardProps {
   credentials: AzureCredentials;
   onDisconnect: () => void;
   darkMode: boolean;
   onToggleDarkMode: () => void;
+  currentUser?: { name?: string; email?: string; role?: string; profilePictureUrl?: string } | null;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMode, onToggleDarkMode }) => {
+const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMode, onToggleDarkMode, currentUser }) => {
   const [activePage, setActivePage] = useState('dashboard');
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string>(
     credentials.subscriptions?.[0]?.subscriptionId ?? ''
   );
+  const [credentialsModalOpen, setCredentialsModalOpen] = useState(false);
 
   const handlePageChange = (page: string) => {
     setActivePage(page);
@@ -163,7 +166,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
           {/* Dark Mode Toggle */}
           <IconButton
             onClick={onToggleDarkMode}
-            sx={{ 
+            sx={{
               color: 'white',
               bgcolor: 'rgba(255,255,255,0.1)',
               '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
@@ -172,14 +175,28 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
           >
             {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
-          
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 1 }}>
+
+          {/* Azure Settings */}
+          <IconButton
+            onClick={() => setCredentialsModalOpen(true)}
+            sx={{
+              color: 'white',
+              bgcolor: 'rgba(255,255,255,0.1)',
+              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
+            }}
+            size="small"
+            title="Azure credentials"
+          >
+            <SettingsIcon />
+          </IconButton>
+
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 0.5 }}>
             <Avatar sx={{ width: 36, height: 36, bgcolor: '#4A90E2' }}>
               <PersonIcon />
             </Avatar>
             <Box>
               <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
-                Azure User
+                {currentUser?.name ?? 'Azure User'}
               </Typography>
               <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', lineHeight: 1.2 }}>
                 {selectedSubscriptionId ? selectedSubName : `${credentials.subscriptionIds?.length || 0} subscription(s)`}
@@ -191,6 +208,13 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
           </Box>
         </Box>
       </Box>
+
+      {/* Azure Credentials Modal */}
+      <AzureCredentialsModal
+        open={credentialsModalOpen}
+        onClose={() => setCredentialsModalOpen(false)}
+        onSaved={() => window.location.reload()}
+      />
 
       {/* Main Content */}
       <Box

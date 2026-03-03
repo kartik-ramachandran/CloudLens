@@ -13,6 +13,8 @@ import {
 import SearchIcon from '@mui/icons-material/Search';
 import StorageIcon from '@mui/icons-material/Storage';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import { Tooltip as MuiTooltip } from '@mui/material';
 import FilterListIcon from '@mui/icons-material/FilterList';
 import ClearIcon from '@mui/icons-material/Clear';
 import PieChartIcon from '@mui/icons-material/PieChart';
@@ -298,6 +300,7 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
                   {!compact && visibleColumns.resourceGroup && <StyledHeadCell>Resource Group</StyledHeadCell>}
                   {!compact && visibleColumns.tags && <StyledHeadCell>Tags</StyledHeadCell>}
                   {!compact && visibleColumns.resourceId && <StyledHeadCell>Resource ID</StyledHeadCell>}
+                  <StyledHeadCell align="center" width={48}>Portal</StyledHeadCell>
                 </TableRow>
                 <TableRow sx={{ bgcolor: 'background.default' }}>
                   {(compact || visibleColumns.name) && (
@@ -401,6 +404,7 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
                     </TableCell>
                   )}
                   {!compact && <TableCell sx={{ py: 1, px: 1 }} />}
+                  <TableCell sx={{ py: 1, px: 1 }} />
                 </TableRow>
               </TableHead>
               <TableBody>
@@ -481,6 +485,20 @@ const ResourcesTab: React.FC<ResourcesTabProps> = ({ credentials, compact = fals
                         </Typography>
                       </TableCell>
                     )}
+                    <TableCell align="center" sx={{ py: 1.5, width: 48 }}>
+                      <MuiTooltip title="Open in Azure Portal">
+                        <IconButton
+                          size="small"
+                          component="a"
+                          href={`https://portal.azure.com/#resource${r.id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ color: '#0078d4' }}
+                        >
+                          <OpenInNewIcon sx={{ fontSize: 16 }} />
+                        </IconButton>
+                      </MuiTooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

@@ -6,7 +6,8 @@ import {
   ComplianceReport, Soc2Control, ComplianceEvidence, ControlGap, Soc2ControlDefinition,
   VantaSettings, VantaSyncStatus, VantaSyncResult,
   AccessReviewSummary, ChangeManagementReportData, RemediationItem, RemediationItemDto,
-  AvailabilityReport, VulnerabilityReport, NetworkSecurityReport, Soc2ReadinessReport
+  AvailabilityReport, VulnerabilityReport, NetworkSecurityReport, Soc2ReadinessReport,
+  SsoProvider, LoginResponse, AuthUser,
 } from '../types';
 
 // Use environment variable for API URL, fallback to localhost for development
@@ -14,23 +15,77 @@ const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8080/api
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  headers: { 'Content-Type': 'application/json' },
 });
 
-// Add response interceptor to handle 401 Unauthorized errors
+// ── JWT request interceptor ──────────────────────────────────────────────────
+// Attach the stored Bearer token to every outgoing request.
+api.interceptors.request.use((config: any) => {
+  const token = localStorage.getItem('authToken');
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers['Authorization'] = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ── 401 response interceptor ─────────────────────────────────────────────────
+// Clear credentials and redirect to root (SSO login page) on auth failure.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401) {
-      // Clear session and redirect to login
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('authUser');
       localStorage.removeItem('azureSession');
+      // Replace current history entry so the user goes back to login
+      window.history.replaceState({}, document.title, '/');
       window.location.reload();
     }
     return Promise.reject(error);
   }
 );
+
+// ── Auth / SSO APIs ───────────────────────────────────────────────────────────
+
+/** Returns enabled SSO providers from the backend (no auth required). */
+export const getAuthProviders = async (): Promise<SsoProvider[]> => {
+  const response = await api.get('/auth/providers');
+  return response.data;
+};
+
+/**
+ * Exchanges an OAuth2 authorization code for an AzureLens JWT.
+ * The backend uses the configured client secret to call the provider's token endpoint.
+ */
+export const loginWithCode = async (
+  provider: string,
+  code: string,
+  codeVerifier: string,
+  redirectUri: string,
+): Promise<LoginResponse> => {
+  const response = await api.post('/auth/callback', { provider, code, codeVerifier, redirectUri });
+  return response.data;
+};
+
+/** Returns the currently authenticated user's profile (requires JWT). */
+export const getCurrentUser = async (): Promise<AuthUser> => {
+  const response = await api.get('/auth/me');
+  return response.data;
+};
+
+/** Signs in as a demo/testing user (no SSO required). For development use only. */
+export const demoLogin = async (): Promise<LoginResponse> => {
+  const response = await api.post('/auth/demo-login');
+  return response.data;
+};
+
+// ── Azure global credential APIs ──────────────────────────────────────────────
+
+export const checkGlobalCredentials = async () => {
+  const response = await api.get('/azure/check-credentials');
+  return response.data;
+};
 
 export const connectToAzure = async (credentials: AzureCredentials) => {
   const response = await api.post('/azure/connect', credentials);

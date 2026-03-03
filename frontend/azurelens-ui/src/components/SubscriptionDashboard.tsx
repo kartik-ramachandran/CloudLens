@@ -410,7 +410,7 @@ const SubscriptionDashboard: React.FC<SubscriptionDashboardProps> = ({ credentia
                                   ${sub.costs.totalCost.toFixed(2)}
                                 </Typography>
                                 <Typography variant="body2" color="text.secondary">
-                                  {sub.costs.currency} • Last 30 Days
+                                  {sub.costs.currency} • Last 12 Months
                                 </Typography>
                               </Box>
 

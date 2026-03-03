@@ -10,23 +10,60 @@ public class VantaService : IVantaService
 {
     private readonly AppDbContext _context;
     private readonly IAzureService _azureService;
+    private readonly ICacheService _cacheService;
     private readonly IComplianceService _complianceService;
     private readonly ILogger<VantaService> _logger;
+    private readonly IConfiguration _configuration;
     private readonly HttpClient _httpClient;
     private const string VantaApiBase = "https://api.vanta.com/v1";
 
     public VantaService(
         AppDbContext context,
         IAzureService azureService,
+        ICacheService cacheService,
         IComplianceService complianceService,
         ILogger<VantaService> logger,
+        IConfiguration configuration,
         IHttpClientFactory httpClientFactory)
     {
         _context = context;
         _azureService = azureService;
+        _cacheService = cacheService;
         _complianceService = complianceService;
         _logger = logger;
+        _configuration = configuration;
         _httpClient = httpClientFactory.CreateClient();
+    }
+
+    private async Task<bool> TriggerFunctionsRefreshAsync()
+    {
+        try
+        {
+            var functionsUrl = _configuration["AzureFunctions:BaseUrl"];
+            if (string.IsNullOrEmpty(functionsUrl))
+            {
+                _logger.LogWarning("Azure Functions URL not configured");
+                return false;
+            }
+
+            _logger.LogInformation("Triggering Azure Functions cache refresh from VantaService...");
+            var response = await _httpClient.PostAsync($"{functionsUrl}/api/TriggerRefresh", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Azure Functions refresh triggered successfully");
+                await Task.Delay(5000);
+                return true;
+            }
+            
+            _logger.LogWarning("Failed to trigger Azure Functions refresh: {StatusCode}", response.StatusCode);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error triggering Azure Functions refresh");
+            return false;
+        }
     }
 
     public async Task<VantaSettings?> GetSettingsAsync()
@@ -140,7 +177,12 @@ public class VantaService : IVantaService
                 log.EvidenceItemsSynced = evidenceLog.EvidenceItemsSynced;
             }
 
-            var recommendations = await _azureService.GetSecurityRecommendationsAsync(credentials);
+            // TODO: SecurityRecommendations need their own cache table - AIRecommendations are different
+            // For now, use empty list and trigger Functions refresh
+            _logger.LogWarning("Security recommendations cache not available for Vanta. Need separate cache table.");
+            await TriggerFunctionsRefreshAsync();
+            
+            var recommendations = new List<SecurityRecommendation>();
             var testLog = await SyncTestResultsAsync(credentials, recommendations);
             log.TestResultsSynced = testLog.TestResultsSynced;
 
@@ -172,7 +214,21 @@ public class VantaService : IVantaService
             if (settings == null || string.IsNullOrEmpty(settings.ApiToken))
                 throw new Exception("Vanta not configured");
 
-            var resources = await _azureService.GetResourcesAsync(credentials);
+            // Only read from PostgreSQL - if empty, trigger Functions
+            var resources = await _cacheService.GetCachedResourcesAsync(credentials.SubscriptionIds ?? new List<string>());
+            if (resources == null || !resources.Any())
+            {
+                _logger.LogWarning("No cached resources for Vanta sync, triggering refresh...");
+                await TriggerFunctionsRefreshAsync();
+                resources = await _cacheService.GetCachedResourcesAsync(credentials.SubscriptionIds ?? new List<string>());
+            }
+            
+            if (resources == null || !resources.Any())
+            {
+                _logger.LogWarning("No resources found after triggering refresh");
+                throw new Exception("No resources available for Vanta sync");
+            }
+            
             var payloads = resources.Select(r => MapResourceToVanta(r)).ToList();
 
             var synced = 0;

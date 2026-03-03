@@ -155,6 +155,8 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
     switch (aiProvider) {
       case 'OpenAI':
         return ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo'];
+      case 'AzureOpenAI':
+        return ['gpt-4o', 'gpt-4o-mini', 'gpt-4', 'gpt-35-turbo'];
       case 'Anthropic':
         return ['claude-3-5-sonnet-20241022', 'claude-3-opus-20240229', 'claude-3-sonnet-20240229', 'claude-3-haiku-20240307'];
       case 'Bedrock':
@@ -294,16 +296,17 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
               }}
             >
               <MenuItem value="OpenAI">OpenAI</MenuItem>
+              <MenuItem value="AzureOpenAI">Azure OpenAI</MenuItem>
               <MenuItem value="Anthropic">Anthropic (Claude)</MenuItem>
               <MenuItem value="Bedrock">AWS Bedrock</MenuItem>
             </Select>
           </FormControl>
 
           <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Model</InputLabel>
+            <InputLabel>{aiProvider === 'AzureOpenAI' ? 'Deployment Name' : 'Model'}</InputLabel>
             <Select
               value={aiModel}
-              label="Model"
+              label={aiProvider === 'AzureOpenAI' ? 'Deployment Name' : 'Model'}
               onChange={(e) => setAiModel(e.target.value)}
             >
               {getModelOptions().map((model) => (
@@ -328,12 +331,23 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
 
           <TextField
             fullWidth
-            label="Custom Endpoint (Optional)"
+            label={aiProvider === 'AzureOpenAI' ? 'Azure OpenAI Endpoint (Required)' : 'Custom Endpoint (Optional)'}
             variant="outlined"
             value={aiEndpoint}
             onChange={(e) => setAiEndpoint(e.target.value)}
-            placeholder={aiProvider === 'OpenAI' ? 'https://api.openai.com/v1/chat/completions' : 'Leave empty for default'}
-            helperText="Leave empty to use the default endpoint"
+            placeholder={
+              aiProvider === 'AzureOpenAI'
+                ? 'https://YOUR_RESOURCE.openai.azure.com/openai/deployments/YOUR_DEPLOYMENT/chat/completions?api-version=2024-10-21'
+                : aiProvider === 'OpenAI'
+                ? 'https://api.openai.com/v1/chat/completions'
+                : 'Leave empty for default'
+            }
+            helperText={
+              aiProvider === 'AzureOpenAI'
+                ? 'Full Azure OpenAI chat completions URL including deployment name and api-version'
+                : 'Leave empty to use the default endpoint'
+            }
+            required={aiProvider === 'AzureOpenAI'}
             sx={{ mb: 2 }}
           />
 

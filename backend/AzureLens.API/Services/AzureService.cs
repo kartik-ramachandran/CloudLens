@@ -12,6 +12,10 @@ public class AzureService : IAzureService
 {
     private readonly ILogger<AzureService> _logger;
 
+    // Shared semaphore: prevents concurrent Azure Cost Management API calls within the same process.
+    // Both the timer function and HTTP trigger run in the same container, sharing quota.
+    private static readonly SemaphoreSlim _costApiSemaphore = new SemaphoreSlim(1, 1);
+
     public AzureService(ILogger<AzureService> logger)
     {
         _logger = logger;
@@ -184,6 +188,11 @@ public class AzureService : IAzureService
             var allSubscriptions = await GetSubscriptionsAsync(credentials);
             var subscriptionLookup = allSubscriptions.ToDictionary(s => s.SubscriptionId, s => s.DisplayName);
 
+            // Acquire semaphore: serialize cost API calls across timer and manual refresh functions
+            await _costApiSemaphore.WaitAsync();
+            try
+            {
+
             // Query each requested subscription directly
             foreach (var subscriptionId in subscriptionIds)
             {
@@ -195,7 +204,7 @@ public class AzureService : IAzureService
                 try
                 {
                     var endDate = DateTimeOffset.UtcNow;
-                    var startDate = endDate.AddDays(-30);
+                    var startDate = endDate.AddDays(-364);
 
                     _logger.LogInformation($"Fetching cost data for subscription {subscriptionId} ({subscriptionName}) from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
 
@@ -232,11 +241,28 @@ public class AzureService : IAzureService
                         var jsonContent = System.Text.Json.JsonSerializer.Serialize(requestBody);
                         var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
                         
-                        var httpResponse = await httpClient.PostAsync(apiUrl, content);
-                        var responseContent = await httpResponse.Content.ReadAsStringAsync();
-                        
-                        _logger.LogInformation($"Cost API Response Status: {httpResponse.StatusCode}");
-                        
+                        // Retry up to 5 times on 429 TooManyRequests
+                        // Azure Cost Management quota window is ~60s — use 60/90/120s backoff
+                        System.Net.Http.HttpResponseMessage httpResponse = null!;
+                        string responseContent = "";
+                        for (int attempt = 0; attempt < 5; attempt++)
+                        {
+                            httpResponse = await httpClient.PostAsync(apiUrl, new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json"));
+                            responseContent = await httpResponse.Content.ReadAsStringAsync();
+                            _logger.LogInformation($"Cost API Response Status: {httpResponse.StatusCode} (attempt {attempt + 1})");
+
+                            if ((int)httpResponse.StatusCode == 429)
+                            {
+                                // Use Retry-After header if present, otherwise exponential backoff capped at 120s
+                                var retryAfter = httpResponse.Headers.RetryAfter?.Delta
+                                    ?? TimeSpan.FromSeconds(Math.Min(60 * (attempt + 1), 120));
+                                _logger.LogWarning($"Rate limited (429) for subscription {subscriptionId}. Waiting {retryAfter.TotalSeconds}s before retry...");
+                                await Task.Delay(retryAfter);
+                                continue;
+                            }
+                            break;
+                        }
+
                         if (!httpResponse.IsSuccessStatusCode)
                         {
                             _logger.LogWarning($"Cost API returned error: {responseContent}");
@@ -249,8 +275,8 @@ public class AzureService : IAzureService
                         {
                             SubscriptionId = subscriptionId,
                             SubscriptionName = subscriptionName,
-                            StartDate = startDate.DateTime,
-                            EndDate = endDate.DateTime,
+                            StartDate = startDate.UtcDateTime,
+                            EndDate = endDate.UtcDateTime,
                             TotalCost = 0m,
                             Currency = "USD",
                             CostsByService = new List<CostByService>()
@@ -346,6 +372,9 @@ public class AzureService : IAzureService
                         }
 
                         costDataList.Add(costData);
+
+                        // 5s delay between subscriptions — Azure Cost Management allows ~10 req/30s
+                        await Task.Delay(5000);
                     }
                     catch (Exception ex)
                     {
@@ -356,8 +385,8 @@ public class AzureService : IAzureService
                         {
                             SubscriptionId = subscriptionId,
                             SubscriptionName = subscriptionName,
-                            StartDate = DateTimeOffset.UtcNow.AddDays(-30).DateTime,
-                            EndDate = DateTimeOffset.UtcNow.DateTime,
+                            StartDate = DateTimeOffset.UtcNow.AddDays(-364).UtcDateTime,
+                            EndDate = DateTimeOffset.UtcNow.UtcDateTime,
                             TotalCost = 0m,
                             Currency = "USD",
                             CostsByService = new List<CostByService>()
@@ -370,6 +399,12 @@ public class AzureService : IAzureService
                 .GroupBy(c => c.SubscriptionId)
                 .Select(g => g.First())
                 .ToList();
+
+            } // end semaphore try
+            finally
+            {
+                _costApiSemaphore.Release();
+            }
         }
         catch (Exception ex)
         {
@@ -653,6 +688,11 @@ public class AzureService : IAzureService
             var credential = GetCredential(credentials);
             var armClient = new ArmClient(credential);
 
+            // Acquire semaphore: serialize with GetCostsAsync to share the rate limit quota fairly
+            await _costApiSemaphore.WaitAsync();
+            try
+            {
+
             var tenants = armClient.GetTenants();
             await foreach (var tenant in tenants)
             {
@@ -706,14 +746,34 @@ public class AzureService : IAzureService
                     var jsonContent = System.Text.Json.JsonSerializer.Serialize(requestBody);
                     var content = new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json");
                     
-                    var httpResponse = await httpClient.PostAsync(apiUrl, content);
-                    var responseContent = await httpResponse.Content.ReadAsStringAsync();
-                    
+                    // Retry up to 5 times on 429 TooManyRequests
+                    // Azure Cost Management quota window is ~60s — use 60/90/120s backoff
+                    System.Net.Http.HttpResponseMessage httpResponse = null!;
+                    string responseContent = "";
+                    for (int attempt = 0; attempt < 5; attempt++)
+                    {
+                        httpResponse = await httpClient.PostAsync(apiUrl, new StringContent(jsonContent, System.Text.Encoding.UTF8, "application/json"));
+                        responseContent = await httpResponse.Content.ReadAsStringAsync();
+                        if ((int)httpResponse.StatusCode == 429)
+                        {
+                            var retryAfter = httpResponse.Headers.RetryAfter?.Delta
+                                ?? TimeSpan.FromSeconds(Math.Min(60 * (attempt + 1), 120));
+                            _logger.LogWarning($"Rate limited (429) for resource costs subscription {subscription.Data.SubscriptionId}. Waiting {retryAfter.TotalSeconds}s...");
+                            await Task.Delay(retryAfter);
+                            continue;
+                        }
+                        break;
+                    }
+
                     if (!httpResponse.IsSuccessStatusCode)
                     {
                         _logger.LogWarning($"Resource cost API returned error: {responseContent}");
+                        await Task.Delay(5000);
                         continue;
                     }
+
+                    // 5s delay between subscriptions — Azure Cost Management allows ~10 req/30s
+                    await Task.Delay(5000);
 
                     using var responseDoc = System.Text.Json.JsonDocument.Parse(responseContent);
 
@@ -776,8 +836,8 @@ public class AzureService : IAzureService
                                         ResourceType = resourceType,
                                         ResourceGroup = resourceGroup,
                                         Currency = currency,
-                                        StartDate = start.DateTime,
-                                        EndDate = end.DateTime,
+                                        StartDate = start.UtcDateTime,
+                                        EndDate = end.UtcDateTime,
                                         MonthlyCosts = new List<MonthlyCost>()
                                     };
                                 }
@@ -810,6 +870,12 @@ public class AzureService : IAzureService
             }
 
             return allResourceCosts.OrderByDescending(r => r.TotalCost).ToList();
+
+            } // end semaphore try
+            finally
+            {
+                _costApiSemaphore.Release();
+            }
         }
         catch (Exception ex)
         {

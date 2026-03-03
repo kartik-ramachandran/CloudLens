@@ -1,34 +1,43 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AzureLens.API.Models;
 using AzureLens.API.Services;
+using AzureLens.API.Data;
+using AzureLens.API.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AzureLens.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class FinOpsController : ControllerBase
 {
     private readonly IFinOpsService _finOpsService;
     private readonly ICredentialCacheService _credentialCache;
+    private readonly AppDbContext _dbContext;
     private readonly ILogger<FinOpsController> _logger;
 
     public FinOpsController(
         IFinOpsService finOpsService,
         ICredentialCacheService credentialCache,
+        AppDbContext dbContext,
         ILogger<FinOpsController> logger)
     {
         _finOpsService = finOpsService;
         _credentialCache = credentialCache;
+        _dbContext = dbContext;
         _logger = logger;
     }
 
     [HttpPost("metrics")]
-    public async Task<IActionResult> GetFinOpsMetrics([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetFinOpsMetrics([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var metrics = await _finOpsService.GetFinOpsMetricsAsync(credentials);
             return Ok(metrics);
         }
@@ -40,12 +49,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("waste")]
-    public async Task<IActionResult> GetWastedResources([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetWastedResources([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var wasted = await _finOpsService.GetWastedResourcesAsync(credentials);
             return Ok(wasted);
         }
@@ -57,12 +66,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("advisor")]
-    public async Task<IActionResult> GetAdvisorRecommendations([FromBody] SubscriptionRequest request, [FromQuery] string? category = null)
+    public async Task<IActionResult> GetAdvisorRecommendations([FromBody] SubscriptionRequest? request = null, [FromQuery] string? category = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var recs = await _finOpsService.GetAdvisorRecommendationsAsync(credentials, category);
             return Ok(recs);
         }
@@ -74,12 +83,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("rightsizing")]
-    public async Task<IActionResult> GetRightsizingRecommendations([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetRightsizingRecommendations([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var recs = await _finOpsService.GetRightsizingRecommendationsAsync(credentials);
             return Ok(recs);
         }
@@ -91,12 +100,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("anomalies")]
-    public async Task<IActionResult> GetCostAnomalies([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetCostAnomalies([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var anomalies = await _finOpsService.DetectCostAnomaliesAsync(credentials);
             return Ok(anomalies);
         }
@@ -108,12 +117,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("forecast")]
-    public async Task<IActionResult> GetCostForecast([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetCostForecast([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var forecast = await _finOpsService.GetCostForecastAsync(credentials);
             return Ok(forecast);
         }
@@ -125,12 +134,12 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("budgets")]
-    public async Task<IActionResult> GetBudgets([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetBudgets([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
             var budgets = await _finOpsService.GetBudgetsAsync(credentials);
             return Ok(budgets);
         }
@@ -142,13 +151,13 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("tag-compliance")]
-    public async Task<IActionResult> GetTagCompliance([FromBody] TagComplianceRequest request)
+    public async Task<IActionResult> GetTagCompliance([FromBody] TagComplianceRequest? request = null)
     {
         try
         {
-            var credentials = GetCredentials(request);
-            if (credentials == null) return Unauthorized("Invalid session");
-            var report = await _finOpsService.GetTagComplianceAsync(credentials, request.RequiredTags);
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
+            var report = await _finOpsService.GetTagComplianceAsync(credentials, request?.RequiredTags);
             return Ok(report);
         }
         catch (Exception ex)
@@ -159,14 +168,13 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("ai-insights")]
-    public async Task<IActionResult> GetFinOpsAIInsights([FromBody] FinOpsAIInsightRequest request)
+    public async Task<IActionResult> GetFinOpsAIInsights([FromBody] FinOpsAIInsightRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
-            if (credentials == null) return Unauthorized("Invalid session");
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var insights = await _finOpsService.GenerateFinOpsAIInsightsAsync(credentials, request.InsightType);
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
+            var insights = await _finOpsService.GenerateFinOpsAIInsightsAsync(credentials, request?.InsightType ?? "General");
             return Ok(insights);
         }
         catch (Exception ex)
@@ -177,13 +185,14 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("apply-bulk-tags")]
-    public async Task<IActionResult> ApplyBulkTags([FromBody] BulkTagRequestDto request)
+    public async Task<IActionResult> ApplyBulkTags([FromBody] BulkTagRequestDto? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
-            if (credentials == null) return Unauthorized("Invalid session");
-            credentials.SubscriptionIds = request.SubscriptionIds;
+            if (request == null) return BadRequest("Request body is required for bulk tag operations");
+            
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
 
             var bulkRequest = new BulkTagRequest
             {
@@ -203,15 +212,14 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("export-tag-violations")]
-    public async Task<IActionResult> ExportTagViolations([FromBody] TagComplianceRequest request)
+    public async Task<IActionResult> ExportTagViolations([FromBody] TagComplianceRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
-            if (credentials == null) return Unauthorized("Invalid session");
-            credentials.SubscriptionIds = request.SubscriptionIds;
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
 
-            var csvBytes = await _finOpsService.ExportTagViolationsToCsvAsync(credentials, request.RequiredTags);
+            var csvBytes = await _finOpsService.ExportTagViolationsToCsvAsync(credentials, request?.RequiredTags);
             return File(csvBytes, "text/csv", $"tag-violations-{DateTime.UtcNow:yyyyMMdd-HHmmss}.csv");
         }
         catch (Exception ex)
@@ -222,13 +230,14 @@ public class FinOpsController : ControllerBase
     }
 
     [HttpPost("ai-tag-suggestions")]
-    public async Task<IActionResult> GetAITagSuggestions([FromBody] AITagSuggestionRequest request)
+    public async Task<IActionResult> GetAITagSuggestions([FromBody] AITagSuggestionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
-            if (credentials == null) return Unauthorized("Invalid session");
-            credentials.SubscriptionIds = request.SubscriptionIds;
+            if (request == null) return BadRequest("Request body with ResourceIds is required");
+            
+            var credentials = await GetCredentials(request);
+            if (credentials == null) return Unauthorized("No active credentials found");
 
             var suggestions = await _finOpsService.GetAITagSuggestionsAsync(credentials, request.ResourceIds);
             return Ok(suggestions);
@@ -240,12 +249,25 @@ public class FinOpsController : ControllerBase
         }
     }
 
-    private AzureCredentials? GetCredentials(SubscriptionRequest request)
+    private async Task<AzureCredentials?> GetCredentials(SubscriptionRequest? request = null)
     {
-        var credentials = _credentialCache.GetCredentials(request.SessionId);
-        if (credentials == null) return null;
-        credentials.SubscriptionIds = request.SubscriptionIds;
-        return credentials;
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null)
+        {
+            return null;
+        }
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = request?.SubscriptionIds 
+                ?? JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
     }
 }
 

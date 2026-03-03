@@ -3,11 +3,11 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy csproj and restore dependencies
-COPY ["AzureLens.API.csproj", "./"]
+COPY ["AzureLens.API/AzureLens.API.csproj", "./"]
 RUN dotnet restore
 
 # Copy everything else and build
-COPY . .
+COPY ["AzureLens.API/", "./"]
 RUN dotnet build -c Release -o /app/build
 
 # Publish stage

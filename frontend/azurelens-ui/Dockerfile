@@ -3,7 +3,7 @@ FROM node:18-alpine AS build
 WORKDIR /app
 
 # Set API URL as build argument (can be overridden at build time)
-ARG REACT_APP_API_URL=https://costfinderapi.yellowmoss-36cf1839.australiaeast.azurecontainerapps.io/api
+ARG REACT_APP_API_URL=https://aca-azurelens-be.victorioustree-30449962.australiaeast.azurecontainerapps.io/api
 ENV REACT_APP_API_URL=$REACT_APP_API_URL
 
 # Copy package files

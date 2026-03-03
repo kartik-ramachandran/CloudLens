@@ -17,6 +17,12 @@ public class AppDbContext : DbContext
     public DbSet<CachedAIRecommendation> CachedAIRecommendations { get; set; }
     public DbSet<AISettings> AISettings { get; set; }
     public DbSet<JiraSettings> JiraSettings { get; set; }
+    public DbSet<CredentialSession> CredentialSessions { get; set; }
+    public DbSet<GlobalAzureCredentials> GlobalAzureCredentials { get; set; }
+    
+    // Authentication & Authorization
+    public DbSet<UserEntity> Users { get; set; }
+    public DbSet<SsoProviderConfig> SsoProviderConfigs { get; set; }
 
     // FinOps, Compliance, and Vanta tables
     public DbSet<VantaSettings> VantaSettings { get; set; }

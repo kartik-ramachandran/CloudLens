@@ -238,9 +238,20 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
         }
       });
     });
-    return Array.from(serviceMap.entries())
+    const allServices = Array.from(serviceMap.entries())
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+    
+    // Show top 12 services, group the rest as "Other Services"
+    if (allServices.length > 12) {
+      const top12 = allServices.slice(0, 12);
+      const othersSum = allServices.slice(12).reduce((sum, s) => sum + s.value, 0);
+      if (othersSum > 0) {
+        top12.push({ name: `Other Services (${allServices.length - 12})`, value: othersSum });
+      }
+      return top12;
+    }
+    return allServices;
   }, [filteredCosts]);
 
   // Compute trend data from monthly costs
@@ -319,7 +330,7 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                   ? <Skeleton variant="text" width={200} height={60} sx={{ bgcolor: 'rgba(255,255,255,0.18)' }} />
                   : <>
                       <Typography variant="caption" sx={{ opacity: 0.75, letterSpacing: 1.5, fontSize: '0.62rem', display: 'block' }}>
-                        TOTAL SPEND · LAST 30 DAYS
+                        TOTAL SPEND · LAST 12 MONTHS
                       </Typography>
                       <Typography variant="h3" sx={{ fontWeight: 800, fontFamily: '"SF Mono","Fira Code",monospace', letterSpacing: -1 }}>
                         {fmtCost(totalCost)}
@@ -354,7 +365,7 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
       {/* ── KPI CARDS ── */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
         <Grid item xs={12} sm={4}>
-          <KpiCard label="Total Azure Spend" value={fmtCost(totalCost)} subtext="Last 30 days"
+          <KpiCard label="Total Azure Spend" value={fmtCost(totalCost)} subtext="Last 12 months"
             icon={<AccountBalanceWalletIcon />} ringColor={DS.accent}
             progress={Math.min((totalCost / 10000) * 100, 100)} loading={loading} />
         </Grid>
@@ -542,11 +553,11 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
             <Card>
               <CardContent sx={{ p: 3 }}>
                 <SectionHeader icon={<TrendingUpIcon />}>Cost by Service</SectionHeader>
-                <ResponsiveContainer width="100%" height={420}>
+                <ResponsiveContainer width="100%" height={400}>
                   <PieChart>
                     <Pie
-                      data={serviceCostData} cx="40%" cy="50%"
-                      outerRadius={140} innerRadius={55} paddingAngle={2}
+                      data={serviceCostData} cx="42%" cy="50%"
+                      outerRadius={135} innerRadius={55} paddingAngle={2}
                       labelLine={false} dataKey="value"
                     >
                       {serviceCostData.map((_, i) => (
@@ -556,8 +567,15 @@ const CostsTab: React.FC<CostsTabProps> = ({ credentials }) => {
                     <Tooltip formatter={(v: number) => [`$${Number(v).toFixed(2)}`, 'Cost']} />
                     <Legend
                       layout="vertical" align="right" verticalAlign="middle"
-                      wrapperStyle={{ paddingLeft: '20px', fontSize: '13px' }}
-                      formatter={(v: string) => v.length > 30 ? v.substring(0, 28) + '…' : v}
+                      wrapperStyle={{ 
+                        paddingLeft: '10px', 
+                        fontSize: '11px',
+                        maxHeight: '360px',
+                        overflowY: 'auto',
+                        lineHeight: '1.3'
+                      }}
+                      iconSize={10}
+                      formatter={(v: string) => v.length > 28 ? v.substring(0, 26) + '…' : v}
                     />
                   </PieChart>
                 </ResponsiveContainer>

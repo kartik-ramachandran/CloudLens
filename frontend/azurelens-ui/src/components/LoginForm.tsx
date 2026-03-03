@@ -266,7 +266,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="caption" color="text.secondary">
-              Note: Your credentials are stored locally in your browser. You can update them anytime from Settings.
+              <strong>Admin Setup:</strong> These credentials will be stored securely in the database and used by all users to access AzureLens. No per-user authentication required.
             </Typography>
           </Box>
         </CardContent>

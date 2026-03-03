@@ -10,12 +10,14 @@ namespace AzureLens.API.Services;
 public class FinOpsService : IFinOpsService
 {
     private readonly IAzureService _azureService;
+    private readonly ICacheService _cacheService;
     private readonly IAIService _aiService;
     private readonly ILogger<FinOpsService> _logger;
 
-    public FinOpsService(IAzureService azureService, IAIService aiService, ILogger<FinOpsService> logger)
+    public FinOpsService(IAzureService azureService, ICacheService cacheService, IAIService aiService, ILogger<FinOpsService> logger)
     {
         _azureService = azureService;
+        _cacheService = cacheService;
         _aiService = aiService;
         _logger = logger;
     }
@@ -33,39 +35,49 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            // Fetch shared data once to avoid hitting the Azure Cost Management API
-            // multiple times in parallel (which causes rate-limit failures and $0 results).
-            var resources = await _azureService.GetResourcesAsync(credentials);
-            var costs = await _azureService.GetCostsAsync(credentials);
-
-            // Fetch per-resource cost data for accurate waste calculation
+            // Fetch data from cache (populated by Functions worker)
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
             var endDate = DateTime.UtcNow;
-            var startDate = endDate.AddDays(-30);
-            var resourceCosts = await _azureService.GetResourceCostsAsync(credentials, startDate, endDate);
+            var startDate = endDate.AddDays(-364); // 1 full year of data
+            
+            var resources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
+            var costs = await _cacheService.GetCachedCostsAsync(subscriptionIds);
+            var resourceCosts = await _cacheService.GetCachedResourceCostsAsync(subscriptionIds, startDate, endDate);
 
-            // Now run advisor + tag compliance in parallel (they don't use Cost Management API)
-            var advisorTask = GetAdvisorRecommendationsAsync(credentials, "Cost");
-            var tagTask = GetTagComplianceAsync(credentials);
-            await Task.WhenAll(advisorTask, tagTask);
+            // If cache is empty, return empty metrics
+            if (resources == null || !resources.Any())
+            {
+                _logger.LogWarning("No cached resources found. Cache may not be populated yet.");
+                return new FinOpsMetrics
+                {
+                    TotalWaste = 0,
+                    WastedResourceCount = 0,
+                    TagCoveragePercent = 0,
+                    PotentialMonthlySavings = 0,
+                    AdvisorRecommendationCount = 0,
+                    TopWastedResources = new List<WastedResource>(),
+                    TopAdvisorRecommendations = new List<AdvisorRecommendation>(),
+                    RecentAnomalies = new List<CostAnomaly>(),
+                    GeneratedAt = DateTime.UtcNow
+                };
+            }
 
-            var advisor = await advisorTask;
-            var tags = await tagTask;
-
+            // Compute waste and anomalies from cached data only
+            // TODO: Add Advisor and Tag Compliance to cache tables (currently would call Azure APIs)
             var wasted = ComputeWastedResources(resources, costs, resourceCosts);
             var anomalies = ComputeCostAnomalies(costs);
 
             var totalWaste = wasted.Sum(w => w.EstimatedMonthlyCost);
-            var advisorSavings = advisor.Sum(a => (a.AnnualSavingsAmount ?? 0) / 12);
 
             return new FinOpsMetrics
             {
                 TotalWaste = totalWaste,
                 WastedResourceCount = wasted.Count,
-                TagCoveragePercent = tags.TagCoveragePercent,
-                PotentialMonthlySavings = totalWaste + advisorSavings,
-                AdvisorRecommendationCount = advisor.Count,
+                TagCoveragePercent = 0, // TODO: Compute from cached resources
+                PotentialMonthlySavings = totalWaste,
+                AdvisorRecommendationCount = 0, // TODO: Add cached advisor recommendations
                 TopWastedResources = wasted.OrderByDescending(w => w.EstimatedMonthlyCost).Take(10).ToList(),
-                TopAdvisorRecommendations = advisor.Take(10).ToList(),
+                TopAdvisorRecommendations = new List<AdvisorRecommendation>(), // TODO: Read from cache
                 RecentAnomalies = anomalies.Take(5).ToList(),
                 GeneratedAt = DateTime.UtcNow
             };
@@ -81,13 +93,21 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var resources = await _azureService.GetResourcesAsync(credentials);
-            var costs = await _azureService.GetCostsAsync(credentials);
-            
-            // Fetch per-resource cost data for accurate cost calculation
+            // Fetch data from cache (populated by Functions worker)
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
             var endDate = DateTime.UtcNow;
-            var startDate = endDate.AddDays(-30);
-            var resourceCosts = await _azureService.GetResourceCostsAsync(credentials, startDate, endDate);
+            var startDate = endDate.AddDays(-364); // 1 full year of data
+            
+            var resources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
+            var costs = await _cacheService.GetCachedCostsAsync(subscriptionIds);
+            var resourceCosts = await _cacheService.GetCachedResourceCostsAsync(subscriptionIds, startDate, endDate);
+
+            // If cache is empty, return empty list
+            if (resources == null || !resources.Any())
+            {
+                _logger.LogWarning("No cached resources found for waste detection. Cache may not be populated yet.");
+                return new List<WastedResource>();
+            }
             
             return ComputeWastedResources(resources, costs, resourceCosts);
         }
@@ -100,15 +120,15 @@ public class FinOpsService : IFinOpsService
 
     private List<WastedResource> ComputeWastedResources(List<AzureResource> resources, List<CostData> costs, List<ResourceCostData> resourceCosts)
     {
-        // Build lookup for per-resource actual costs
-        var actualCostByResourceId = resourceCosts.ToDictionary(
+        // Build lookup for per-resource cost data (preserving MonthlyCosts for accurate monthly estimate)
+        var actualCostByResourceId = resourceCosts?.ToDictionary(
             rc => rc.ResourceId.ToLower(),
-            rc => rc.TotalCost);
+            rc => rc) ?? new Dictionary<string, ResourceCostData>();
 
-        // Build subscription-level costs as fallback
-        var costBySubscription = costs.ToDictionary(
+        // Build subscription-level costs as fallback (handle null)
+        var costBySubscription = costs?.ToDictionary(
             c => NormaliseSubId(c.SubscriptionId),
-            c => c.TotalCost);
+            c => c.TotalCost) ?? new Dictionary<string, decimal>();
 
         var wastedList = new List<WastedResource>();
         foreach (var resource in resources)
@@ -118,16 +138,23 @@ public class FinOpsService : IFinOpsService
 
             // Try to get actual cost from resource-level data first
             decimal estimatedCost;
-            if (actualCostByResourceId.TryGetValue(resource.Id.ToLower(), out var actualCost) && actualCost > 0)
+            if (actualCostByResourceId.TryGetValue(resource.Id.ToLower(), out var rcData) && rcData.TotalCost > 0)
             {
-                // Use actual cost data
-                estimatedCost = actualCost;
+                // Use the most recent month's actual cost — more accurate than yearly average.
+                // Costs can spike in a given month (e.g. large data transfer, scale-up).
+                var latestMonthCost = rcData.MonthlyCosts?
+                    .Where(m => m.Cost > 0)
+                    .OrderByDescending(m => m.Month)
+                    .FirstOrDefault()?.Cost;
+
+                estimatedCost = latestMonthCost ?? rcData.TotalCost / 12;
             }
             else
             {
-                // Fallback to estimation based on subscription total
-                var subscriptionCost = costBySubscription.GetValueOrDefault(NormaliseSubId(resource.SubscriptionId), 0);
-                estimatedCost = EstimateResourceCost(resource, (double)subscriptionCost);
+                // Fallback to estimation based on subscription total (yearly, need to convert to monthly)
+                var subscriptionYearlyCost = costBySubscription.GetValueOrDefault(NormaliseSubId(resource.SubscriptionId), 0);
+                // Divide by 12 to get monthly estimate from yearly subscription cost
+                estimatedCost = EstimateResourceCost(resource, (double)subscriptionYearlyCost) / 12;
             }
 
             wastedList.Add(new WastedResource
@@ -160,8 +187,8 @@ public class FinOpsService : IFinOpsService
 
             if (!subscriptionIds.Any())
             {
-                var subs = await _azureService.GetSubscriptionsAsync(credentials);
-                subscriptionIds = subs.Select(s => s.SubscriptionId).ToList();
+                _logger.LogWarning("No subscription IDs provided for Advisor recommendations");
+                return recommendations;
             }
 
             using var httpClient = new HttpClient();
@@ -238,7 +265,8 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var costs = await _azureService.GetCostsAsync(credentials);
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
+            var costs = await _cacheService.GetCachedCostsAsync(subscriptionIds);
             return ComputeCostAnomalies(costs);
         }
         catch (Exception ex)
@@ -251,6 +279,12 @@ public class FinOpsService : IFinOpsService
     private List<CostAnomaly> ComputeCostAnomalies(List<CostData> costs)
     {
         var anomalies = new List<CostAnomaly>();
+        
+        // Handle null costs
+        if (costs == null || !costs.Any())
+        {
+            return anomalies;
+        }
 
         foreach (var cost in costs)
         {
@@ -290,7 +324,8 @@ public class FinOpsService : IFinOpsService
         try
         {
             // Use MonthlyCosts endpoint for forecast data if available; otherwise fall back to current costs.
-            var costs = await _azureService.GetCostsAsync(credentials);
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
+            var costs = await _cacheService.GetCachedCostsAsync(subscriptionIds);
             var forecasts = new List<CostForecast>();
 
             foreach (var cost in costs)
@@ -355,8 +390,8 @@ public class FinOpsService : IFinOpsService
 
             if (!subscriptionIds.Any())
             {
-                var subs = await _azureService.GetSubscriptionsAsync(credentials);
-                subscriptionIds = subs.Select(s => s.SubscriptionId).ToList();
+                _logger.LogWarning("No subscription IDs provided for budget data");
+                return budgets;
             }
 
             using var httpClient = new HttpClient();
@@ -407,7 +442,8 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var resources = await _azureService.GetResourcesAsync(credentials);
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
+            var resources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
             var defaultRequiredTags = requiredTags ?? new List<string> { "Environment", "Owner", "CostCenter", "Project" };
 
             var violations = new List<TagViolation>();
@@ -464,8 +500,9 @@ public class FinOpsService : IFinOpsService
     {
         try
         {
-            var resources = await _azureService.GetResourcesAsync(credentials);
-            var costs = await _azureService.GetCostsAsync(credentials);
+            var subscriptionIds = credentials.SubscriptionIds ?? new List<string>();
+            var resources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
+            var costs = await _cacheService.GetCachedCostsAsync(subscriptionIds);
             var wasted = await GetWastedResourcesAsync(credentials);
             var advisor = await GetAdvisorRecommendationsAsync(credentials, "Cost");
 

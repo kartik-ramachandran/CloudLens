@@ -24,11 +24,9 @@ public class CacheService : ICacheService
         if (!subscriptionIds.Any())
             return null;
 
-        var cacheMinutes = int.Parse(_configuration["CacheSettings:ResourceCacheMinutes"] ?? "30");
-        var cutoffTime = DateTime.UtcNow.AddMinutes(-cacheMinutes);
-
+        // No expiration - data is always current, populated by Functions
         var cached = await _context.CachedResources
-            .Where(r => subscriptionIds.Contains(r.SubscriptionId) && r.CachedAt > cutoffTime)
+            .Where(r => subscriptionIds.Contains(r.SubscriptionId))
             .ToListAsync();
 
         if (!cached.Any())
@@ -95,11 +93,9 @@ public class CacheService : ICacheService
         if (!subscriptionIds.Any())
             return null;
 
-        var cacheMinutes = int.Parse(_configuration["CacheSettings:CostCacheMinutes"] ?? "60");
-        var cutoffTime = DateTime.UtcNow.AddMinutes(-cacheMinutes);
-
+        // No expiration - data is always current, populated by Functions
         var cached = await _context.CachedCosts
-            .Where(c => subscriptionIds.Contains(c.SubscriptionId) && c.CachedAt > cutoffTime)
+            .Where(c => subscriptionIds.Contains(c.SubscriptionId))
             .OrderByDescending(c => c.CachedAt)  // Get most recent first
             .ToListAsync();
 
@@ -226,15 +222,12 @@ public class CacheService : ICacheService
         if (!subscriptionIds.Any())
             return null;
 
-        var cacheMinutes = int.Parse(_configuration["CacheSettings:CostCacheMinutes"] ?? "60");
-        var cutoffTime = DateTime.UtcNow.AddMinutes(-cacheMinutes);
-
-        // Generate context hash from subscription IDs + date range
+        // No expiration - data is always current, populated by Functions
         var contextString = $"{string.Join(",", subscriptionIds.OrderBy(s => s))}_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}";
         var contextHash = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(contextString));
 
         var cached = await _context.CachedMonthlyCosts
-            .Where(c => c.ContextHash == contextHash && c.CachedAt > cutoffTime)
+            .Where(c => c.ContextHash == contextHash)
             .ToListAsync();
 
         if (!cached.Any())
@@ -285,15 +278,12 @@ public class CacheService : ICacheService
         if (!subscriptionIds.Any())
             return null;
 
-        var cacheMinutes = int.Parse(_configuration["CacheSettings:CostCacheMinutes"] ?? "60");
-        var cutoffTime = DateTime.UtcNow.AddMinutes(-cacheMinutes);
-
-        // Generate context hash from subscription IDs + date range
+        // No expiration - data is always current, populated by Functions
         var contextString = $"{string.Join(",", subscriptionIds.OrderBy(s => s))}_{startDate:yyyyMMdd}_{endDate:yyyyMMdd}";
         var contextHash = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(contextString));
 
         var cached = await _context.CachedResourceCosts
-            .Where(c => c.ContextHash == contextHash && c.CachedAt > cutoffTime)
+            .Where(c => c.ContextHash == contextHash)
             .ToListAsync();
 
         if (!cached.Any())
@@ -343,6 +333,39 @@ public class CacheService : ICacheService
         await _context.SaveChangesAsync();
 
         _logger.LogInformation($"Cached {costs.Count} resource costs for {subscriptionIds.Count} subscriptions from {startDate:yyyy-MM-dd} to {endDate:yyyy-MM-dd}");
+
+        // Derive monthly aggregated costs from resource costs (no extra API call needed).
+        // GetResourceCostsAsync fetches monthly granularity per resource — aggregate by month.
+        var monthlyCostsByMonth = costs
+            .Where(rc => rc.MonthlyCosts != null)
+            .SelectMany(rc => rc.MonthlyCosts!)
+            .GroupBy(m => m.Month)
+            .Select(g => new MonthlyCost
+            {
+                Month = g.Key,
+                Cost = g.Sum(m => m.Cost),
+                Currency = g.First().Currency
+            })
+            .OrderBy(m => m.Month)
+            .ToList();
+
+        if (monthlyCostsByMonth.Any())
+        {
+            await _context.CachedMonthlyCosts
+                .Where(c => c.ContextHash == contextHash)
+                .ExecuteDeleteAsync();
+
+            _context.CachedMonthlyCosts.AddRange(monthlyCostsByMonth.Select(mc => new Data.Entities.CachedMonthlyCost
+            {
+                ContextHash = contextHash,
+                Month = mc.Month,
+                Cost = mc.Cost,
+                Currency = mc.Currency,
+                CachedAt = DateTime.UtcNow
+            }));
+            await _context.SaveChangesAsync();
+            _logger.LogInformation($"Derived and cached {monthlyCostsByMonth.Count} monthly cost records from resource data");
+        }
     }
 
     public async Task ClearExpiredCacheAsync()

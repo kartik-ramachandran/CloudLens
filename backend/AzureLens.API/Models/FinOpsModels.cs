@@ -129,10 +129,8 @@ public class FinOpsMetrics
     public DateTime GeneratedAt { get; set; } = DateTime.UtcNow;
 }
 
-public class FinOpsAIInsightRequest
+public class FinOpsAIInsightRequest : SubscriptionRequest
 {
-    public string SessionId { get; set; } = string.Empty;
-    public List<string> SubscriptionIds { get; set; } = new();
     public string InsightType { get; set; } = "General"; // General, WasteAnalysis, Rightsizing, Forecast, Anomaly
 }
 

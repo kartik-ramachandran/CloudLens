@@ -21,8 +21,8 @@ interface CloudAccountsTabProps {
 const CloudAccountsTab: React.FC<CloudAccountsTabProps> = ({ credentials }) => {
   const subscriptions = credentials.subscriptions || [];
   
-  const getStateColor = (state: string) => {
-    switch (state.toLowerCase()) {
+  const getStateColor = (state: string | undefined) => {
+    switch ((state ?? '').toLowerCase()) {
       case 'enabled':
         return 'success';
       case 'disabled':
@@ -34,8 +34,8 @@ const CloudAccountsTab: React.FC<CloudAccountsTabProps> = ({ credentials }) => {
     }
   };
 
-  const getStateIcon = (state: string) => {
-    switch (state.toLowerCase()) {
+  const getStateIcon = (state: string | undefined) => {
+    switch ((state ?? '').toLowerCase()) {
       case 'enabled':
         return <CheckCircleIcon fontSize="small" />;
       case 'disabled':

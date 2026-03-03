@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AzureLens.API.Models;
+using AzureLens.API.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace AzureLens.API.Data;
@@ -20,13 +21,15 @@ public partial class AzureLensContext : DbContext
 
     public virtual DbSet<CachedAirecommendation> CachedAirecommendations { get; set; }
 
-    public virtual DbSet<CachedCost> CachedCosts { get; set; }
+    public virtual DbSet<Models.CachedCost> CachedCosts { get; set; }
 
-    public virtual DbSet<CachedMonthlyCost> CachedMonthlyCosts { get; set; }
+    public virtual DbSet<Models.CachedMonthlyCost> CachedMonthlyCosts { get; set; }
 
-    public virtual DbSet<CachedResource> CachedResources { get; set; }
+    public virtual DbSet<Models.CachedResource> CachedResources { get; set; }
 
-    public virtual DbSet<CachedResourceCost> CachedResourceCosts { get; set; }
+    public virtual DbSet<Models.CachedResourceCost> CachedResourceCosts { get; set; }
+
+    public virtual DbSet<Entities.GlobalAzureCredentials> GlobalAzureCredentials { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
 #warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
@@ -48,21 +51,21 @@ public partial class AzureLensContext : DbContext
             entity.HasIndex(e => e.CachedAt, "IX_CachedAIRecommendations_CachedAt");
         });
 
-        modelBuilder.Entity<CachedCost>(entity =>
+        modelBuilder.Entity<Models.CachedCost>(entity =>
         {
             entity.HasIndex(e => e.CachedAt, "IX_CachedCosts_CachedAt");
 
             entity.HasIndex(e => e.SubscriptionId, "IX_CachedCosts_SubscriptionId");
         });
 
-        modelBuilder.Entity<CachedMonthlyCost>(entity =>
+        modelBuilder.Entity<Models.CachedMonthlyCost>(entity =>
         {
             entity.HasIndex(e => e.CachedAt, "IX_CachedMonthlyCosts_CachedAt");
 
             entity.HasIndex(e => e.ContextHash, "IX_CachedMonthlyCosts_ContextHash");
         });
 
-        modelBuilder.Entity<CachedResource>(entity =>
+        modelBuilder.Entity<Models.CachedResource>(entity =>
         {
             entity.HasIndex(e => e.CachedAt, "IX_CachedResources_CachedAt");
 
@@ -71,13 +74,18 @@ public partial class AzureLensContext : DbContext
             entity.HasIndex(e => e.SubscriptionId, "IX_CachedResources_SubscriptionId");
         });
 
-        modelBuilder.Entity<CachedResourceCost>(entity =>
+        modelBuilder.Entity<Models.CachedResourceCost>(entity =>
         {
             entity.HasIndex(e => e.CachedAt, "IX_CachedResourceCosts_CachedAt");
 
             entity.HasIndex(e => e.ContextHash, "IX_CachedResourceCosts_ContextHash");
 
             entity.HasIndex(e => e.ResourceId, "IX_CachedResourceCosts_ResourceId");
+        });
+
+        modelBuilder.Entity<Entities.GlobalAzureCredentials>(entity =>
+        {
+            entity.HasIndex(e => e.IsActive, "IX_GlobalAzureCredentials_IsActive");
         });
 
         OnModelCreatingPartial(modelBuilder);

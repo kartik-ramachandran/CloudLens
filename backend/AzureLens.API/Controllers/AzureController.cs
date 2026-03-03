@@ -1,11 +1,17 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using AzureLens.API.Models;
 using AzureLens.API.Services;
+using AzureLens.API.Data;
+using AzureLens.API.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AzureLens.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class AzureController : ControllerBase
 {
     private readonly IAzureService _azureService;
@@ -14,7 +20,10 @@ public class AzureController : ControllerBase
     private readonly ICacheService _cacheService;
     private readonly ICredentialCacheService _credentialCache;
     private readonly IJiraService _jiraService;
+    private readonly AppDbContext _dbContext;
     private readonly ILogger<AzureController> _logger;
+    private readonly IConfiguration _configuration;
+    private readonly HttpClient _httpClient;
 
     public AzureController(
         IAzureService azureService, 
@@ -23,7 +32,10 @@ public class AzureController : ControllerBase
         ICacheService cacheService,
         ICredentialCacheService credentialCache,
         IJiraService jiraService,
-        ILogger<AzureController> logger)
+        AppDbContext dbContext,
+        ILogger<AzureController> logger,
+        IConfiguration configuration,
+        IHttpClientFactory httpClientFactory)
     {
         _azureService = azureService;
         _aiService = aiService;
@@ -31,7 +43,83 @@ public class AzureController : ControllerBase
         _cacheService = cacheService;
         _credentialCache = credentialCache;
         _jiraService = jiraService;
+        _dbContext = dbContext;
         _logger = logger;
+        _configuration = configuration;
+        _httpClient = httpClientFactory.CreateClient();
+        // Set longer timeout for Functions calls (they fetch from Azure APIs)
+        _httpClient.Timeout = TimeSpan.FromMinutes(5);
+    }
+
+    private async Task<bool> TriggerFunctionsRefreshAsync()
+    {
+        try
+        {
+            var functionsUrl = _configuration["AzureFunctions:BaseUrl"];
+            if (string.IsNullOrEmpty(functionsUrl))
+            {
+                _logger.LogWarning("Azure Functions URL not configured");
+                return false;
+            }
+
+            _logger.LogInformation("Triggering Azure Functions cache refresh...");
+            var response = await _httpClient.PostAsync($"{functionsUrl}/api/TriggerRefresh", null);
+            
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("Azure Functions refresh triggered successfully");
+                // Wait a bit for function to populate data
+                await Task.Delay(5000);
+                return true;
+            }
+            
+            _logger.LogWarning("Failed to trigger Azure Functions refresh: {StatusCode}", response.StatusCode);
+            return false;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error triggering Azure Functions refresh");
+            return false;
+        }
+    }
+
+    [HttpGet("check-credentials")]
+    public async Task<IActionResult> CheckCredentials()
+    {
+        try
+        {
+            var globalCred = await _dbContext.GlobalAzureCredentials.FirstOrDefaultAsync(c => c.IsActive);
+            
+            if (globalCred == null)
+            {
+                return Ok(new { exists = false });
+            }
+
+            // Return stored subscription data from database - NO Azure API calls
+            var subscriptionIds = JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) ?? new List<string>();
+            var subscriptionNames = JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionNamesJson) ?? new List<string>();
+            
+            // Build subscription objects from stored IDs and names
+            var subscriptions = subscriptionIds.Select((id, index) => new
+            {
+                subscriptionId = id,
+                displayName = index < subscriptionNames.Count ? subscriptionNames[index] : id
+            }).ToList();
+            
+            _logger.LogInformation($"Global credentials exist: {globalCred.SubscriptionCount} subscriptions stored");
+            
+            return Ok(new
+            {
+                exists = true,
+                subscriptionCount = globalCred.SubscriptionCount,
+                subscriptions
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error checking credentials");
+            return Ok(new { exists = false });
+        }
     }
 
     [HttpPost("connect")]
@@ -54,35 +142,65 @@ public class AzureController : ControllerBase
             }
 
             var subscriptions = await _azureService.GetSubscriptionsAsync(credentials);
+            var subscriptionIds = subscriptions.Select(s => s.SubscriptionId).ToList();
+            var subscriptionNames = subscriptions.Select(s => s.DisplayName).ToList();
 
-            // Check if these credentials already exist in cache
-            var existingSessionId = _credentialCache.FindSessionByCredentials(credentials);
+            // Store or update global credentials in database
+            var globalCred = await _dbContext.GlobalAzureCredentials.FirstOrDefaultAsync(c => c.IsActive);
             
-            string sessionId;
-            bool isNewSession;
-            
-            if (existingSessionId != null)
+            if (globalCred == null)
             {
-                // Reuse existing session ID for same credentials
-                sessionId = existingSessionId;
-                isNewSession = false;
-                _logger.LogInformation($"Reusing existing session {sessionId} for tenant {credentials.TenantId?.Substring(0, 8)}...");
+                // Create new global credentials
+                globalCred = new GlobalAzureCredentials
+                {
+                    TenantId = credentials.TenantId!,
+                    ClientId = credentials.ClientId!,
+                    ClientSecret = credentials.ClientSecret!,
+                    SubscriptionIdsJson = JsonSerializer.Serialize(subscriptionIds),
+                    SubscriptionNamesJson = JsonSerializer.Serialize(subscriptionNames),
+                    SubscriptionCount = subscriptions.Count,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow,
+                    IsActive = true
+                };
+                _dbContext.GlobalAzureCredentials.Add(globalCred);
+                _logger.LogInformation($"Created new global credentials for tenant {credentials.TenantId?.Substring(0, 8)}...");
             }
             else
             {
-                // Create new session ID for new credentials
-                sessionId = Guid.NewGuid().ToString();
-                _credentialCache.StoreCredentials(sessionId, credentials);
-                isNewSession = true;
-                _logger.LogInformation($"Generated new session {sessionId} for tenant {credentials.TenantId?.Substring(0, 8)}...");
+                // Update existing global credentials
+                globalCred.TenantId = credentials.TenantId!;
+                globalCred.ClientId = credentials.ClientId!;
+                globalCred.ClientSecret = credentials.ClientSecret!;
+                globalCred.SubscriptionIdsJson = JsonSerializer.Serialize(subscriptionIds);
+                globalCred.SubscriptionNamesJson = JsonSerializer.Serialize(subscriptionNames);
+                globalCred.SubscriptionCount = subscriptions.Count;
+                globalCred.UpdatedAt = DateTime.UtcNow;
+                _logger.LogInformation($"Updated global credentials for tenant {credentials.TenantId?.Substring(0, 8)}...");
             }
+            
+            await _dbContext.SaveChangesAsync();
+
+            // Trigger Functions to populate initial data (fire-and-forget - don't wait)
+            _logger.LogInformation("Triggering Functions to populate cache data in background...");
+            _ = Task.Run(async () => 
+            {
+                try 
+                {
+                    await TriggerFunctionsRefreshAsync();
+                    _logger.LogInformation("Background Functions trigger completed");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Background Functions trigger failed");
+                }
+            });
 
             return Ok(new
             {
                 success = true,
-                message = "Successfully connected to Azure",
-                sessionId,
-                isNewSession,
+                message = "Successfully connected to Azure. Loading data in background...",
+                subscriptionCount = subscriptions.Count,
                 subscriptions
             });
         }
@@ -93,27 +211,48 @@ public class AzureController : ControllerBase
         }
     }
 
+    private async Task<AzureCredentials?> GetGlobalCredentialsAsync(List<string>? subscriptionIds = null)
+    {
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null)
+        {
+            return null;
+        }
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = subscriptionIds 
+                ?? JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
+    }
+
     [HttpPost("resources")]
-    public async Task<IActionResult> GetResources([FromBody] SubscriptionRequest request, [FromQuery] bool forceRefresh = false)
+    public async Task<IActionResult> GetResources([FromBody] SubscriptionRequest? request = null, [FromQuery] bool forceRefresh = false)
     {
         try
         {
-            // Get credentials from cache using sessionId
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            // Get global credentials
+            var subscriptionIds = request?.SubscriptionIds?.Distinct().ToList();
+            var credentials = await GetGlobalCredentialsAsync(subscriptionIds);
+            
             if (credentials == null)
             {
-                _logger.LogWarning($"Session expired or not found: {request.SessionId}");
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                _logger.LogWarning("No global credentials configured");
+                return Unauthorized(new { error = "No Azure credentials configured. Please connect first." });
             }
 
-            // Deduplicate and set subscription IDs
-            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
-            credentials.SubscriptionIds = subscriptionIds;
+            var subIds = credentials.SubscriptionIds ?? new List<string>();
 
             // Try to get from cache first (unless forceRefresh is true)
-            if (!forceRefresh)
+            if (!forceRefresh && subIds.Any())
             {
-                var cachedResources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
+                var cachedResources = await _cacheService.GetCachedResourcesAsync(subIds);
                 
                 if (cachedResources != null && cachedResources.Any())
                 {
@@ -121,16 +260,27 @@ public class AzureController : ControllerBase
                     return Ok(cachedResources);
                 }
             }
-            else
+            else if (forceRefresh)
             {
                 _logger.LogInformation("Force refresh requested - bypassing cache");
             }
 
-            // Cache miss or force refresh - fetch from Azure and cache
-            var resources = await _azureService.GetResourcesAsync(credentials);
-            await _cacheService.CacheResourcesAsync(resources);
+            // Only read from PostgreSQL - if empty, trigger Functions to populate
+            var resources = await _cacheService.GetCachedResourcesAsync(subIds);
+            if (resources == null || !resources.Any())
+            {
+                _logger.LogWarning("No resources in database, triggering Azure Function refresh...");
+                await TriggerFunctionsRefreshAsync();
+                
+                // Retry query
+                resources = await _cacheService.GetCachedResourcesAsync(subIds);
+                if (resources == null || !resources.Any())
+                {
+                    _logger.LogWarning("No resources found after triggering refresh");
+                    return Ok(new List<object>());
+                }
+            }
             
-            _logger.LogInformation($"Fetched and cached {resources.Count} resources from Azure");
             return Ok(resources);
         }
         catch (Exception ex)
@@ -141,26 +291,26 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("costs")]
-    public async Task<IActionResult> GetCosts([FromBody] SubscriptionRequest request, [FromQuery] bool forceRefresh = false)
+    public async Task<IActionResult> GetCosts([FromBody] SubscriptionRequest? request = null, [FromQuery] bool forceRefresh = false)
     {
         try
         {
-            // Get credentials from cache using sessionId
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            // Get global credentials
+            var subscriptionIds = request?.SubscriptionIds?.Distinct().ToList();
+            var credentials = await GetGlobalCredentialsAsync(subscriptionIds);
+            
             if (credentials == null)
             {
-                _logger.LogWarning($"Session expired or not found: {request.SessionId}");
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                _logger.LogWarning("No global credentials configured");
+                return Unauthorized(new { error = "No Azure credentials configured. Please connect first." });
             }
 
-            // Deduplicate and set subscription IDs
-            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
-            credentials.SubscriptionIds = subscriptionIds;
+            var subIds = credentials.SubscriptionIds ?? new List<string>();
 
             // Try to get from cache first (unless forceRefresh is true)
-            if (!forceRefresh)
+            if (!forceRefresh && subIds.Any())
             {
-                var cachedCosts = await _cacheService.GetCachedCostsAsync(subscriptionIds);
+                var cachedCosts = await _cacheService.GetCachedCostsAsync(subIds);
                 
                 if (cachedCosts != null && cachedCosts.Any())
                 {
@@ -168,16 +318,27 @@ public class AzureController : ControllerBase
                     return Ok(cachedCosts);
                 }
             }
-            else
+            else if (forceRefresh)
             {
                 _logger.LogInformation("Force refresh requested - bypassing cache");
             }
 
-            // Cache miss or force refresh - fetch from Azure and cache
-            var costs = await _azureService.GetCostsAsync(credentials);
-            await _cacheService.CacheCostsAsync(costs);
+            // Only read from PostgreSQL - if empty, trigger Functions to populate
+            var costs = await _cacheService.GetCachedCostsAsync(subIds);
+            if (costs == null || !costs.Any())
+            {
+                _logger.LogWarning("No costs in database, triggering Azure Function refresh...");
+                await TriggerFunctionsRefreshAsync();
+                
+                // Retry query
+                costs = await _cacheService.GetCachedCostsAsync(subIds);
+                if (costs == null || !costs.Any())
+                {
+                    _logger.LogWarning("No costs found after triggering refresh");
+                    return Ok(new List<object>());
+                }
+            }
             
-            _logger.LogInformation($"Fetched and cached costs for {costs.Count} subscriptions from Azure");
             return Ok(costs);
         }
         catch (Exception ex)
@@ -188,14 +349,14 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("costs/monthly")]
-    public async Task<IActionResult> GetMonthlyCosts([FromBody] SubscriptionRequest request, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    public async Task<IActionResult> GetMonthlyCosts([FromBody] SubscriptionRequest? request = null, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
             // Default to last 12 months if not specified
@@ -204,28 +365,32 @@ public class AzureController : ControllerBase
             
             _logger.LogInformation($"Fetching monthly costs from {start:yyyy-MM-dd} to {end:yyyy-MM-dd}");
             
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var subscriptionIds = request.SubscriptionIds ?? new List<string>();
+            var subscriptionIds = request?.SubscriptionIds ?? new List<string>();
             
             // Create cache key with date range
             var cacheKey = $"{string.Join(",", subscriptionIds.OrderBy(s => s))}_{start:yyyyMMdd}_{end:yyyyMMdd}";
             
             // Check cache first
             var cachedCosts = await _cacheService.GetCachedMonthlyCostsAsync(subscriptionIds, start, end);
-            if (cachedCosts != null)
+            if (cachedCosts != null && cachedCosts.Any())
             {
                 _logger.LogInformation($"Returning {cachedCosts.Count} cached monthly costs");
                 return Ok(cachedCosts);
             }
             
-            // Fetch from Azure
-            _logger.LogInformation("Cache miss - fetching monthly costs from Azure");
-            var monthlyCosts = await _azureService.GetMonthlyCostsAsync(credentials, start, end);
+            // Only read from PostgreSQL - if empty, trigger Functions to populate
+            _logger.LogWarning("No monthly costs in database, triggering Azure Function refresh...");
+            await TriggerFunctionsRefreshAsync();
             
-            // Cache the results
-            await _cacheService.CacheMonthlyCostsAsync(monthlyCosts, subscriptionIds, start, end);
+            // Retry query
+            cachedCosts = await _cacheService.GetCachedMonthlyCostsAsync(subscriptionIds, start, end);
+            if (cachedCosts == null || !cachedCosts.Any())
+            {
+                _logger.LogWarning("No monthly costs found after triggering refresh");
+                return Ok(new List<object>());
+            }
             
-            return Ok(monthlyCosts);
+            return Ok(cachedCosts);
         }
         catch (Exception ex)
         {
@@ -235,40 +400,43 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("costs/resources")]
-    public async Task<IActionResult> GetResourceCosts([FromBody] SubscriptionRequest request, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
+    public async Task<IActionResult> GetResourceCosts([FromBody] SubscriptionRequest? request = null, [FromQuery] DateTime? startDate = null, [FromQuery] DateTime? endDate = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            // Default to last 6 months if not specified
-            var start = startDate ?? DateTime.UtcNow.AddMonths(-6);
+            // Default to last 3 months if not specified
+            var start = startDate ?? DateTime.UtcNow.AddMonths(-3);
             var end = endDate ?? DateTime.UtcNow;
             
             _logger.LogInformation($"Fetching resource costs from {start:yyyy-MM-dd} to {end:yyyy-MM-dd}");
             
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var subscriptionIds = request.SubscriptionIds ?? new List<string>();
+            var subscriptionIds = request?.SubscriptionIds ?? new List<string>();
             
-            // Check cache first
+            // Try cache first for faster response
             var cachedCosts = await _cacheService.GetCachedResourceCostsAsync(subscriptionIds, start, end);
-            if (cachedCosts != null)
+            if (cachedCosts != null && cachedCosts.Any())
             {
                 _logger.LogInformation($"Returning {cachedCosts.Count} cached resource costs");
                 return Ok(cachedCosts);
             }
             
-            // Fetch from Azure
-            _logger.LogInformation("Cache miss - fetching resource costs from Azure");
+            // Cache miss - make direct call to Azure Cost Management API for user-selected date range
+            _logger.LogInformation($"Cache miss, fetching resource costs directly from Azure Cost Management API");
             var resourceCosts = await _azureService.GetResourceCostsAsync(credentials, start, end);
             
-            // Cache the results
-            await _cacheService.CacheResourceCostsAsync(resourceCosts, subscriptionIds, start, end);
+            if (resourceCosts == null || !resourceCosts.Any())
+            {
+                _logger.LogWarning("No resource costs found in Azure for the selected date range");
+                return Ok(new List<object>());
+            }
             
+            _logger.LogInformation($"Retrieved {resourceCosts.Count} resource costs from Azure API");
             return Ok(resourceCosts);
         }
         catch (Exception ex)
@@ -279,18 +447,33 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("recommendations")]
-    public async Task<IActionResult> GetRecommendations([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetRecommendations([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var recommendations = await _azureService.GetSecurityRecommendationsAsync(credentials);
+            // Only read from PostgreSQL - recommendations populated by Functions
+            var subscriptionIds = request?.SubscriptionIds ?? new List<string>();
+            var recommendations = await _cacheService.GetCachedAIRecommendationsAsync(subscriptionIds);
+            if (recommendations == null || !recommendations.Any())
+            {
+                _logger.LogWarning("No AI recommendations in database, triggering Azure Function refresh...");
+                await TriggerFunctionsRefreshAsync();
+                
+                // Retry query
+                recommendations = await _cacheService.GetCachedAIRecommendationsAsync(subscriptionIds);
+                if (recommendations == null || !recommendations.Any())
+                {
+                    _logger.LogWarning("No AI recommendations found after triggering refresh");
+                    return Ok(new List<object>());
+                }
+            }
+            
             return Ok(recommendations);
         }
         catch (Exception ex)
@@ -301,58 +484,59 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("ai-insights")]
-    public async Task<IActionResult> GetAIInsights([FromBody] AIInsightsRequest request)
+    public async Task<IActionResult> GetAIInsights([FromBody] AIInsightsRequest? request = null)
     {
         try
         {
             // Get credentials from cache
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            var subscriptionIds = (request.SubscriptionIds ?? new List<string>()).Distinct().ToList();
-            credentials.SubscriptionIds = subscriptionIds;
+            var subscriptionIds = (request?.SubscriptionIds ?? new List<string>()).Distinct().ToList();
 
             if (!subscriptionIds.Any())
             {
                 return BadRequest(new { error = "At least one subscription ID is required" });
             }
 
-            // Get resources from cache or fetch from Azure
+            // Get resources from cache ONLY
             var cachedResources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
-            List<AzureResource> resources;
-            
-            if (cachedResources != null && cachedResources.Any())
+            if (cachedResources == null || !cachedResources.Any())
             {
-                resources = cachedResources;
-                _logger.LogInformation($"Using {resources.Count} cached resources for AI analysis");
+                _logger.LogWarning("No resources in database for AI analysis, triggering Azure Function refresh...");
+                await TriggerFunctionsRefreshAsync();
+                
+                // Retry query
+                cachedResources = await _cacheService.GetCachedResourcesAsync(subscriptionIds);
+                if (cachedResources == null || !cachedResources.Any())
+                {
+                    _logger.LogWarning("No resources found after triggering refresh");
+                    return BadRequest(new { error = "No resources found. Please wait and retry." });
+                }
             }
-            else
-            {
-                _logger.LogInformation("No cached resources found - fetching from Azure");
-                resources = await _azureService.GetResourcesAsync(credentials);
-                await _cacheService.CacheResourcesAsync(resources);
-                _logger.LogInformation($"Fetched and cached {resources.Count} resources for AI analysis");
-            }
+            var resources = cachedResources;
+            _logger.LogInformation($"Using {resources.Count} resources from database for AI analysis");
 
-            // Get costs from cache or fetch from Azure
+            // Get costs from cache ONLY
             var cachedCosts = await _cacheService.GetCachedCostsAsync(subscriptionIds);
-            List<CostData> costs;
-            
-            if (cachedCosts != null && cachedCosts.Any())
+            if (cachedCosts == null || !cachedCosts.Any())
             {
-                costs = cachedCosts;
-                _logger.LogInformation($"Using cached costs for {costs.Count} subscriptions for AI analysis");
+                _logger.LogWarning("No costs in database for AI analysis, triggering Azure Function refresh...");
+                await TriggerFunctionsRefreshAsync();
+                
+                // Retry query
+                cachedCosts = await _cacheService.GetCachedCostsAsync(subscriptionIds);
+                if (cachedCosts == null || !cachedCosts.Any())
+                {
+                    _logger.LogWarning("No costs found after triggering refresh");
+                    return BadRequest(new { error = "No costs found. Please wait and retry." });
+                }
             }
-            else
-            {
-                _logger.LogInformation("No cached costs found - fetching from Azure");
-                costs = await _azureService.GetCostsAsync(credentials);
-                await _cacheService.CacheCostsAsync(costs);
-                _logger.LogInformation($"Fetched and cached costs for {costs.Count} subscriptions for AI analysis");
-            }
+            var costs = cachedCosts;
+            _logger.LogInformation($"Using costs from database for {costs.Count} subscriptions for AI analysis");
 
             // Build context for AI analysis from cached/fresh data
             var context = new AzureContext
@@ -442,19 +626,23 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("alerts")]
-    public async Task<IActionResult> GetAlertRules([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetAlertRules([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var alerts = await _azureService.GetAlertRulesAsync(credentials);
-            return Ok(alerts);
+            // TODO: Alerts need to be cached by Functions - no cache table exists yet
+            // For now, trigger Functions and return empty data
+            _logger.LogWarning("Alert rules endpoint called but no cache table exists. Triggering Functions...");
+            await TriggerFunctionsRefreshAsync();
+            
+            // Return empty until Functions populate alert cache table
+            return Ok(new List<object>());
         }
         catch (Exception ex)
         {
@@ -464,19 +652,23 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("aks/services")]
-    public async Task<IActionResult> GetAKSServices([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetAKSServices([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var services = await _azureService.GetAKSServicesAsync(credentials);
-            return Ok(services);
+            // TODO: AKS services need to be cached by Functions - no cache table exists yet
+            // For now, trigger Functions and return empty data
+            _logger.LogWarning("AKS services endpoint called but no cache table exists. Triggering Functions...");
+            await TriggerFunctionsRefreshAsync();
+            
+            // Return empty until Functions populate AKS cache table
+            return Ok(new List<object>());
         }
         catch (Exception ex)
         {
@@ -486,19 +678,23 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("aks/pods")]
-    public async Task<IActionResult> GetAKSPods([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetAKSPods([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var pods = await _azureService.GetAKSPodsAsync(credentials);
-            return Ok(pods);
+            // TODO: AKS pods need to be cached by Functions - no cache table exists yet
+            // For now, trigger Functions and return empty data
+            _logger.LogWarning("AKS pods endpoint called but no cache table exists. Triggering Functions...");
+            await TriggerFunctionsRefreshAsync();
+            
+            // Return empty until Functions populate AKS cache table
+            return Ok(new List<object>());
         }
         catch (Exception ex)
         {
@@ -508,19 +704,23 @@ public class AzureController : ControllerBase
     }
 
     [HttpPost("secure-scores")]
-    public async Task<IActionResult> GetSecureScores([FromBody] SubscriptionRequest request)
+    public async Task<IActionResult> GetSecureScores([FromBody] SubscriptionRequest? request = null)
     {
         try
         {
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
             if (credentials == null)
             {
-                return Unauthorized(new { error = "Session expired. Please reconnect." });
+                return Unauthorized(new { error = "No active credentials found" });
             }
 
-            credentials.SubscriptionIds = request.SubscriptionIds;
-            var secureScores = await _azureService.GetSecureScoresAsync(credentials);
-            return Ok(secureScores);
+            // TODO: Secure scores need to be cached by Functions - no cache table exists yet
+            // For now, trigger Functions and return empty data
+            _logger.LogWarning("Secure scores endpoint called but no cache table exists. Triggering Functions...");
+            await TriggerFunctionsRefreshAsync();
+            
+            // Return empty until Functions populate secure scores cache table
+            return Ok(new List<object>());
         }
         catch (Exception ex)
         {

@@ -1,6 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
 using AzureLens.API.Models;
 using AzureLens.API.Services;
+using AzureLens.API.Data;
+using AzureLens.API.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AzureLens.API.Controllers;
 
@@ -11,30 +15,38 @@ public class AIRemediationController : ControllerBase
     private readonly IAIService _aiService;
     private readonly ILogger<AIRemediationController> _logger;
     private readonly ICredentialCacheService _credentialCache;
+    private readonly AppDbContext _dbContext;
 
     public AIRemediationController(
         IAIService aiService,
         ILogger<AIRemediationController> logger,
-        ICredentialCacheService credentialCache)
+        ICredentialCacheService credentialCache,
+        AppDbContext dbContext)
     {
         _aiService = aiService;
         _logger = logger;
         _credentialCache = credentialCache;
+        _dbContext = dbContext;
     }
 
     /// <summary>
     /// Generate AI-powered remediation suggestions for compliance issues
     /// </summary>
     [HttpPost("suggestions")]
-    public async Task<IActionResult> GenerateSuggestions([FromBody] AIRemediationRequest request)
+    public async Task<IActionResult> GenerateSuggestions([FromBody] AIRemediationRequest? request = null)
     {
         try
         {
+            if (request == null || !request.Issues.Any())
+            {
+                return BadRequest(new { message = "Request with issues is required" });
+            }
+            
             // Validate credentials
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync();
             if (credentials == null)
             {
-                return Unauthorized(new { message = "Session expired. Please log in again." });
+                return Unauthorized(new { message = "No active credentials found. Please configure credentials." });
             }
 
             // Build context from request
@@ -81,15 +93,20 @@ public class AIRemediationController : ControllerBase
     /// Get remediation suggestion for a specific control or incident
     /// </summary>
     [HttpPost("suggest-single")]
-    public async Task<IActionResult> GenerateSingleSuggestion([FromBody] SingleRemediationRequest request)
+    public async Task<IActionResult> GenerateSingleSuggestion([FromBody] SingleRemediationRequest? request = null)
     {
         try
         {
+            if (request == null)
+            {
+                return BadRequest(new { message = "Request is required" });
+            }
+            
             // Validate credentials
-            var credentials = _credentialCache.GetCredentials(request.SessionId);
+            var credentials = await GetGlobalCredentialsAsync();
             if (credentials == null)
             {
-                return Unauthorized(new { message = "Session expired. Please log in again." });
+                return Unauthorized(new { message = "No active credentials found. Please configure credentials." });
             }
 
             var context = new ComplianceRemediationContext
@@ -137,11 +154,30 @@ public class AIRemediationController : ControllerBase
             });
         }
     }
+
+    private async Task<AzureCredentials?> GetGlobalCredentialsAsync()
+    {
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null)
+        {
+            return null;
+        }
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
+    }
 }
 
 public class AIRemediationRequest
 {
-    public string SessionId { get; set; } = string.Empty;
     public string ComplianceType { get; set; } = "SOC2";
     public string? SubscriptionId { get; set; }
     public List<ComplianceIssue> Issues { get; set; } = new();
@@ -149,7 +185,6 @@ public class AIRemediationRequest
 
 public class SingleRemediationRequest
 {
-    public string SessionId { get; set; } = string.Empty;
     public string? ComplianceType { get; set; }
     public string ControlId { get; set; } = string.Empty;
     public string ControlName { get; set; } = string.Empty;
