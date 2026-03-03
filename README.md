@@ -245,17 +245,57 @@ Contributions are welcome! Please:
 
 ## License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
+This project is dual-licensed under:
 
-**What this means:**
-- ✅ **Free to use** - For personal, commercial, and enterprise projects
-- ✅ **Free to modify** - Change the code however you like
-- ✅ **Free to distribute** - Share your modifications or derivatives
-- ✅ **No copyleft** - You can create proprietary versions
-- ✅ **Minimal restrictions** - Just keep the copyright notice in copies
+### 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+
+For **open source use**, this project is licensed under the **AGPL-3.0** license - see the [LICENSE](LICENSE) file for details.
+
+**What this means for open source users:**
+- ✅ **Free to use** - For personal, non-commercial, and open source projects
+- ✅ **Free to modify** - You can change the code
+- ✅ **Must share modifications** - If you modify and deploy as a service, you must make your source code available
+- ✅ **Must use AGPL-3.0** - Any derivative work must also be AGPL-3.0
+- ⚠️ **Network copyleft** - If you run this as a web service, users must have access to the source code
+
+**IMPORTANT for SaaS/Service Providers:**
+If you run a modified version of AzureLens as a network service (SaaS, internal company service, etc.), you are **required to provide the complete source code** to your users under AGPL-3.0.
+
+### 2. Commercial License
+
+For **commercial use** without AGPL-3.0 obligations, you must obtain a commercial license.
+
+**Who needs a commercial license?**
+- 🏢 Companies using AzureLens internally without sharing source code
+- 💼 SaaS providers offering AzureLens as a service
+- 🔒 Organizations that need proprietary modifications
+- 🚀 Businesses that cannot comply with AGPL-3.0 requirements
+
+**Commercial license benefits:**
+- ✅ Use in closed-source/proprietary products
+- ✅ No requirement to share source code
+- ✅ Host as SaaS without AGPL obligations
+- ✅ Priority support and custom features
+- ✅ Legal protection and indemnification
+
+**Contact for commercial licensing:**
+- Email: kartik_ramachandran@outlook.com
+
+### Which License Do I Need?
+
+| Use Case | License Required |
+|----------|------------------|
+| Personal project | AGPL-3.0 (Free) |
+| Open source project | AGPL-3.0 (Free) |
+| Learning/Education | AGPL-3.0 (Free) |
+| Internal company use (no modifications) | AGPL-3.0 (Free) |
+| Internal company use (with modifications) | **Commercial License** |
+| SaaS/Cloud service | **Commercial License** |
+| Embedded in proprietary product | **Commercial License** |
+| Cannot share source code | **Commercial License** |
 
 ### Contributing
-By contributing to this project, you agree that your contributions will be licensed under the MIT License.
+By contributing to this project, you agree that your contributions will be licensed under the AGPL-3.0 license.
 
 ## Optional Integrations
 
