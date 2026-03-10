@@ -88,6 +88,10 @@ builder.Services.AddScoped<IAutoRemediationService, AutoRemediationService>();
 // Cost Alerts service
 builder.Services.AddScoped<ICostAlertService, CostAlertService>();
 
+// Multi-cloud cost services (AWS + GCP)
+builder.Services.AddScoped<IAwsService, AwsService>();
+builder.Services.AddScoped<IGcpService, GcpService>();
+
 // Auth service
 builder.Services.AddScoped<IAuthService, AuthService>();
 

@@ -35,6 +35,7 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import Brightness4Icon from '@mui/icons-material/Brightness4';
 import Brightness7Icon from '@mui/icons-material/Brightness7';
 import { AzureCredentials, AzureResource, CostData, SecurityRecommendation } from '../types';
+import { CloudProvider, CloudCredentials } from './CloudProviderSelectModal';
 import ResourcesTab from './ResourcesTab';
 import CostsTab from './CostsTab';
 import RecommendationsTab from './RecommendationsTab';
@@ -54,7 +55,6 @@ import AvailabilityReport from './AvailabilityReport';
 import VulnerabilityManagement from './VulnerabilityManagement';
 import NetworkSecurityReport from './NetworkSecurityReport';
 import SocIncidentDashboard from './SocIncidentDashboard';
-import AzureCredentialsModal from './AzureCredentialsModal';
 
 interface DashboardProps {
   credentials: AzureCredentials;
@@ -62,14 +62,30 @@ interface DashboardProps {
   darkMode: boolean;
   onToggleDarkMode: () => void;
   currentUser?: { name?: string; email?: string; role?: string; profilePictureUrl?: string } | null;
+  selectedProviders?: CloudProvider[];
+  onChangeProviders?: () => void;
+  cloudCredentials?: CloudCredentials;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMode, onToggleDarkMode, currentUser }) => {
+const PROVIDER_COLORS: Record<CloudProvider, string> = {
+  azure: '#0078D4',
+  aws: '#FF9900',
+  gcp: '#4285F4',
+};
+
+const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMode, onToggleDarkMode, currentUser, selectedProviders = ['azure'], onChangeProviders, cloudCredentials }) => {
   const [activePage, setActivePage] = useState('dashboard');
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string>(
     credentials.subscriptions?.[0]?.subscriptionId ?? ''
   );
-  const [credentialsModalOpen, setCredentialsModalOpen] = useState(false);
+  const [activeProvider, setActiveProvider] = useState<CloudProvider>(selectedProviders[0] ?? 'azure');
+
+  // Keep activeProvider in sync when selectedProviders changes
+  React.useEffect(() => {
+    if (!selectedProviders.includes(activeProvider)) {
+      setActiveProvider(selectedProviders[0] ?? 'azure');
+    }
+  }, [selectedProviders]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePageChange = (page: string) => {
     setActivePage(page);
@@ -132,7 +148,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
             }} 
           />
           <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            AzureLens
+            CloudLens
           </Typography>
         </Box>
 
@@ -176,16 +192,39 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
             {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
           </IconButton>
 
-          {/* Azure Settings */}
+          {/* Active cloud provider chips — click to change */}
+          <Box
+            onClick={onChangeProviders}
+            sx={{ display: 'flex', gap: 0.75, cursor: 'pointer', alignItems: 'center' }}
+            title="Change cloud providers"
+          >
+            {selectedProviders.map(p => (
+              <Chip
+                key={p}
+                label={p.toUpperCase()}
+                size="small"
+                sx={{
+                  bgcolor: PROVIDER_COLORS[p],
+                  color: 'white',
+                  fontWeight: 700,
+                  fontSize: '0.68rem',
+                  height: 22,
+                  border: '1.5px solid rgba(255,255,255,0.35)',
+                }}
+              />
+            ))}
+          </Box>
+
+          {/* Settings — opens cloud provider modal */}
           <IconButton
-            onClick={() => setCredentialsModalOpen(true)}
+            onClick={onChangeProviders}
             sx={{
               color: 'white',
               bgcolor: 'rgba(255,255,255,0.1)',
               '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
             }}
             size="small"
-            title="Azure credentials"
+            title="Cloud provider settings"
           >
             <SettingsIcon />
           </IconButton>
@@ -209,12 +248,6 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
         </Box>
       </Box>
 
-      {/* Azure Credentials Modal */}
-      <AzureCredentialsModal
-        open={credentialsModalOpen}
-        onClose={() => setCredentialsModalOpen(false)}
-        onSaved={() => window.location.reload()}
-      />
 
       {/* Main Content */}
       <Box
@@ -287,18 +320,21 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
         <Box sx={{ p: 3 }}>
           {/* Each page component manages its own data, state and behavior independently */}
           {activePage === 'dashboard' && (
-            <LandingDashboard 
+            <LandingDashboard
               credentials={activeCredentials}
               selectedSubscriptionId={selectedSubscriptionId}
               onSubscriptionChange={setSelectedSubscriptionId}
               onNavigate={handlePageChange}
+              selectedProviders={selectedProviders}
+              activeProvider={activeProvider}
+              onProviderChange={setActiveProvider}
             />
           )}
           {activePage === 'resources' && (
             <ResourcesTab credentials={activeCredentials} />
           )}
           {activePage === 'costs' && (
-            <CostsTab credentials={activeCredentials} />
+            <CostsTab credentials={activeCredentials} activeProvider={activeProvider} onChangeProviders={onChangeProviders} cloudCredentials={cloudCredentials} />
           )}
           {activePage === 'finops' && (
             <FinOpsDashboard credentials={activeCredentials} />
@@ -343,7 +379,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
             <CloudAccountsTab credentials={activeCredentials} />
           )}
           {activePage === 'settings' && (
-            <SettingsTab credentials={credentials} onDisconnect={onDisconnect} />
+            <SettingsTab credentials={credentials} onDisconnect={onDisconnect} selectedProviders={selectedProviders} onChangeProviders={onChangeProviders} />
           )}
         </Box>
       </Box>

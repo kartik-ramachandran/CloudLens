@@ -285,7 +285,7 @@ const SsoLoginPage: React.FC = () => {
               <LockOutlinedIcon sx={{ fontSize: 28 }} />
             </Avatar>
             <Typography variant="h5" fontWeight={700} letterSpacing={-0.3}>
-              AzureLens
+              CloudLens
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Sign in to access your Azure insights

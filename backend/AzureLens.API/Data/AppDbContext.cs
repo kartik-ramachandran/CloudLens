@@ -19,7 +19,10 @@ public class AppDbContext : DbContext
     public DbSet<JiraSettings> JiraSettings { get; set; }
     public DbSet<CredentialSession> CredentialSessions { get; set; }
     public DbSet<GlobalAzureCredentials> GlobalAzureCredentials { get; set; }
-    
+    public DbSet<GlobalAwsCredentials> GlobalAwsCredentials { get; set; }
+    public DbSet<GlobalGcpCredentials> GlobalGcpCredentials { get; set; }
+    public DbSet<CachedCloudCost> CachedCloudCosts { get; set; }
+
     // Authentication & Authorization
     public DbSet<UserEntity> Users { get; set; }
     public DbSet<SsoProviderConfig> SsoProviderConfigs { get; set; }
@@ -158,6 +161,27 @@ public class AppDbContext : DbContext
             entity.HasIndex(e => e.SubscriptionId);
             entity.HasIndex(e => e.LastCheckedAt);
             entity.Property(e => e.ThresholdAmount).HasColumnType("decimal(18,2)");
+        });
+
+        modelBuilder.Entity<GlobalAwsCredentials>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IsActive);
+        });
+
+        modelBuilder.Entity<GlobalGcpCredentials>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.IsActive);
+        });
+
+        modelBuilder.Entity<CachedCloudCost>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.HasIndex(e => e.Provider);
+            entity.HasIndex(e => e.AccountId);
+            entity.HasIndex(e => e.CachedAt);
+            entity.Property(e => e.TotalCost).HasColumnType("decimal(18,2)");
         });
 
         modelBuilder.Entity<CostAlertHistory>(entity =>

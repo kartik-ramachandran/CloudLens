@@ -7,11 +7,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="AWSSDK.CostExplorer" Version="3.7.400.51" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="3.7.400.51" />
     <PackageReference Include="Azure.Identity" Version="1.12.0" />
     <PackageReference Include="Azure.ResourceManager" Version="1.12.0" />
     <PackageReference Include="Azure.ResourceManager.Resources" Version="1.8.0" />
     <PackageReference Include="Azure.ResourceManager.CostManagement" Version="1.0.1" />
     <PackageReference Include="ClosedXML" Version="0.104.1" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.72.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

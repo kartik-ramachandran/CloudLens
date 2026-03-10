@@ -16,15 +16,27 @@ import {
 import SaveIcon from '@mui/icons-material/Save';
 import DeleteIcon from '@mui/icons-material/Delete';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
+import CloudIcon from '@mui/icons-material/Cloud';
+import EditIcon from '@mui/icons-material/Edit';
+import Chip from '@mui/material/Chip';
 import { AzureCredentials } from '../types';
 import api from '../services/api';
 import JiraSettingsCard from './JiraSettingsCard';
 import VantaSettingsCard from './VantaSettingsCard';
+import { CloudProvider } from './CloudProviderSelectModal';
 
 interface SettingsTabProps {
   credentials: AzureCredentials;
   onDisconnect: () => void;
+  selectedProviders?: CloudProvider[];
+  onChangeProviders?: () => void;
 }
+
+const PROVIDER_META: Record<CloudProvider, { label: string; color: string }> = {
+  azure: { label: 'Microsoft Azure', color: '#0078D4' },
+  aws:   { label: 'Amazon Web Services', color: '#FF9900' },
+  gcp:   { label: 'Google Cloud Platform', color: '#4285F4' },
+};
 
 interface AISettings {
   provider: string;
@@ -36,7 +48,7 @@ interface AISettings {
   isConfigured?: boolean;
 }
 
-const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) => {
+const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect, selectedProviders = ['azure'], onChangeProviders }) => {
   const [tenantId, setTenantId] = useState(credentials.tenantId);
   const [clientId, setClientId] = useState(credentials.clientId);
   const [clientSecret, setClientSecret] = useState(credentials.clientSecret);
@@ -168,6 +180,85 @@ const SettingsTab: React.FC<SettingsTabProps> = ({ credentials, onDisconnect }) 
 
   return (
     <Box>
+
+      {/* ── CLOUD PROVIDERS SECTION ── */}
+      <Card sx={{ mb: 3 }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <CloudIcon color="primary" />
+              <Typography variant="h6" sx={{ fontWeight: 600 }}>Cloud Providers</Typography>
+            </Box>
+            {onChangeProviders && (
+              <Button size="small" startIcon={<EditIcon />} onClick={onChangeProviders} variant="outlined">
+                Change Providers
+              </Button>
+            )}
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            You are connected to the following cloud providers. Click "Change Providers" to add or remove providers.
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
+            {selectedProviders.map(id => {
+              const meta = PROVIDER_META[id];
+              return (
+                <Chip
+                  key={id}
+                  label={meta.label}
+                  icon={<CloudIcon />}
+                  sx={{ bgcolor: meta.color, color: 'white', fontWeight: 700, '& .MuiChip-icon': { color: 'white' } }}
+                />
+              );
+            })}
+          </Box>
+
+          {/* ── Per-provider credential sections ── */}
+          {selectedProviders.includes('aws') && (
+            <Box sx={{ mt: 3 }}>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#FF9900' }}>
+                AWS Credentials
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                IAM Access Key credentials used for fetching costs via AWS Cost Explorer. Requires <code>ce:GetCostAndUsage</code> permission.
+              </Typography>
+              <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                <TextField size="small" label="Access Key ID" placeholder="AKIAIOSFODNN7EXAMPLE"
+                  sx={{ flex: '1 1 200px' }}
+                  helperText="Stored in session only — not persisted to the database"
+                />
+                <TextField size="small" label="Secret Access Key" type="password" placeholder="••••••••••••••••"
+                  sx={{ flex: '1 1 200px' }}
+                />
+                <TextField size="small" label="Region" placeholder="us-east-1" sx={{ flex: '0 0 140px' }} />
+              </Box>
+              <Typography variant="caption" color="text.disabled" sx={{ mt: 1, display: 'block' }}>
+                Enter credentials in the Costs → AWS tab to fetch and view cost data.
+              </Typography>
+            </Box>
+          )}
+
+          {selectedProviders.includes('gcp') && (
+            <Box sx={{ mt: 3 }}>
+              <Divider sx={{ mb: 2 }} />
+              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5, color: '#4285F4' }}>
+                GCP Credentials
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Service Account JSON key used to authenticate with GCP Cloud Billing. The account needs <code>roles/billing.viewer</code>.
+              </Typography>
+              <TextField
+                fullWidth multiline rows={4} size="small"
+                label="Service Account JSON Key"
+                placeholder={'{\n  "type": "service_account",\n  "project_id": "my-project",\n  ...\n}'}
+                inputProps={{ style: { fontFamily: 'monospace', fontSize: 12 } }}
+                helperText="Paste the full contents of your downloaded service account key file. Stored in session only."
+              />
+            </Box>
+          )}
+        </CardContent>
+      </Card>
+
       <Card>
         <CardContent>
           <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>

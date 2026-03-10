@@ -92,7 +92,7 @@ const AzureCredentialsModal: React.FC<AzureCredentialsModalProps> = ({ open, onC
 
       <DialogContent sx={{ pt: 2.5, pb: 1 }}>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Enter your Azure service principal credentials. AzureLens will connect and discover
+          Enter your Azure service principal credentials. CloudLens will connect and discover
           all accessible subscriptions automatically.
         </Typography>
 

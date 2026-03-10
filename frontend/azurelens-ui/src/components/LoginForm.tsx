@@ -59,7 +59,7 @@ const InstructionsModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
     </DialogTitle>
     <DialogContent dividers>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        AzureLens uses an Azure App Registration (service principal) with read-only access. Follow the steps below to create one.
+        CloudLens uses an Azure App Registration (service principal) with read-only access. Follow the steps below to create one.
       </Typography>
 
       <Step number={1} title="Open Azure Active Directory">
@@ -70,7 +70,7 @@ const InstructionsModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
 
       <Step number={2} title="Create an App Registration">
         <Typography variant="body2" color="text.secondary">
-          Go to <strong>App registrations → New registration</strong>. Give it a name (e.g. <em>AzureLens</em>), leave the default settings, and click <strong>Register</strong>.
+          Go to <strong>App registrations → New registration</strong>. Give it a name (e.g. <em>CloudLens</em>), leave the default settings, and click <strong>Register</strong>.
         </Typography>
       </Step>
 
@@ -125,7 +125,7 @@ const InstructionsModal: React.FC<{ open: boolean; onClose: () => void }> = ({ o
       <Divider sx={{ my: 2 }} />
 
       <Typography variant="caption" color="text.secondary">
-        All roles are <strong>read-only</strong>. AzureLens never writes to or modifies your Azure environment.
+        All roles are <strong>read-only</strong>. CloudLens never writes to or modifies your Azure environment.
       </Typography>
     </DialogContent>
     <DialogActions>
@@ -184,7 +184,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
             <Box
               component="img"
               src="/logo.svg"
-              alt="AzureLens Logo"
+              alt="CloudLens Logo"
               sx={{
                 width: 80,
                 height: 80,
@@ -193,10 +193,10 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
               }}
             />
             <Typography variant="h4" component="h1" gutterBottom sx={{ fontWeight: 700, color: '#0078D4' }}>
-              AzureLens
+              CloudLens
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Advanced Azure Security, Compliance & Cost Management
+              Multi-Cloud Cost, Security & Compliance Management
             </Typography>
           </Box>
 
@@ -266,7 +266,7 @@ const LoginForm: React.FC<LoginFormProps> = ({ onConnect }) => {
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="caption" color="text.secondary">
-              <strong>Admin Setup:</strong> These credentials will be stored securely in the database and used by all users to access AzureLens. No per-user authentication required.
+              <strong>Admin Setup:</strong> These credentials will be stored securely in the database and used by all users to access CloudLens. No per-user authentication required.
             </Typography>
           </Box>
         </CardContent>

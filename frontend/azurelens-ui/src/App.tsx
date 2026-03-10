@@ -3,9 +3,26 @@ import { CssBaseline, ThemeProvider, createTheme, PaletteMode, Box, CircularProg
 import Dashboard from './components/Dashboard';
 import SsoLoginPage from './components/SsoLoginPage';
 import OAuthCallback from './components/OAuthCallback';
+import CloudProviderSelectModal, { CloudProvider, CloudCredentials } from './components/CloudProviderSelectModal';
 import { AzureCredentials } from './types';
 import { checkGlobalCredentials } from './services/api';
 import { isAuthenticated, clearAuth, getStoredUser } from './utils/oauth';
+
+function loadStoredCredentials(): CloudCredentials | null {
+  try {
+    const raw = localStorage.getItem('cloudCredentials');
+    if (raw) return JSON.parse(raw) as CloudCredentials;
+  } catch {}
+  return null;
+}
+
+function loadStoredProviders(): CloudProvider[] | null {
+  try {
+    const raw = localStorage.getItem('cloudProviders');
+    if (raw) return JSON.parse(raw) as CloudProvider[];
+  } catch {}
+  return null;
+}
 
 const getTheme = (mode: PaletteMode) => createTheme({
   palette: {
@@ -57,7 +74,7 @@ const getTheme = (mode: PaletteMode) => createTheme({
 });
 
 // ── View states ───────────────────────────────────────────────────────────────
-type View = 'loading' | 'sso-login' | 'oauth-callback' | 'dashboard';
+type View = 'loading' | 'sso-login' | 'oauth-callback' | 'cloud-select' | 'dashboard';
 
 function isOAuthCallbackUrl(): boolean {
   const params = new URLSearchParams(window.location.search);
@@ -73,6 +90,9 @@ function App() {
 
   const [view, setView] = useState<View>('loading');
   const [credentials, setCredentials] = useState<AzureCredentials | null>(null);
+  const [selectedProviders, setSelectedProviders] = useState<CloudProvider[]>(loadStoredProviders() ?? []);
+  const [cloudCredentials, setCloudCredentials] = useState<CloudCredentials>(loadStoredCredentials() ?? {});
+  const [providerModalOpen, setProviderModalOpen] = useState(false);
 
   const theme = useMemo(() => getTheme(darkMode), [darkMode]);
 
@@ -106,7 +126,7 @@ function App() {
           clientSecret: '',
         };
         setCredentials(creds);
-        setView('dashboard');
+        setCredentials(creds);
       } else {
         // Authenticated but no Azure credentials — admin needs to configure them
         setCredentials({
@@ -117,9 +137,16 @@ function App() {
           clientId: '',
           clientSecret: '',
         });
-        setView('dashboard');
       }
     } catch {
+      // ignore
+    }
+
+    // Show provider selection modal if no stored choice yet
+    const stored = loadStoredProviders();
+    if (!stored || stored.length === 0) {
+      setView('cloud-select');
+    } else {
       setView('dashboard');
     }
   }, []);
@@ -141,6 +168,19 @@ function App() {
     setView('sso-login');
   }, []);
 
+  const handleProviderConfirm = useCallback((providers: CloudProvider[], creds: CloudCredentials) => {
+    localStorage.setItem('cloudProviders', JSON.stringify(providers));
+    localStorage.setItem('cloudCredentials', JSON.stringify(creds));
+    setSelectedProviders(providers);
+    setCloudCredentials(creds);
+    setProviderModalOpen(false);
+    setView('dashboard');
+  }, []);
+
+  const handleOpenProviderModal = useCallback(() => {
+    setProviderModalOpen(true);
+  }, []);
+
   const toggleDarkMode = useCallback(() => {
     setDarkMode(prev => {
       const next = prev === 'light' ? 'dark' : 'light';
@@ -156,7 +196,7 @@ function App() {
       {view === 'loading' && (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '100vh', gap: 2 }}>
           <CircularProgress size={60} />
-          <Typography variant="h6" color="text.secondary">Loading AzureLens…</Typography>
+          <Typography variant="h6" color="text.secondary">Loading CloudLens…</Typography>
         </Box>
       )}
 
@@ -166,14 +206,36 @@ function App() {
         <OAuthCallback onSuccess={handleAuthSuccess} onError={handleAuthError} />
       )}
 
-      {view === 'dashboard' && (
-        <Dashboard
-          credentials={credentials!}
-          onDisconnect={handleDisconnect}
-          darkMode={darkMode === 'dark'}
-          onToggleDarkMode={toggleDarkMode}
-          currentUser={getStoredUser()}
+      {/* Cloud provider selection — shown after first login or when user reopens it */}
+      {view === 'cloud-select' && (
+        <CloudProviderSelectModal
+          open={true}
+          initialProviders={selectedProviders.length > 0 ? selectedProviders : undefined}
+          initialCredentials={cloudCredentials}
+          onConfirm={handleProviderConfirm}
         />
+      )}
+
+      {view === 'dashboard' && (
+        <>
+          <Dashboard
+            credentials={credentials!}
+            onDisconnect={handleDisconnect}
+            darkMode={darkMode === 'dark'}
+            onToggleDarkMode={toggleDarkMode}
+            currentUser={getStoredUser()}
+            selectedProviders={selectedProviders}
+            onChangeProviders={handleOpenProviderModal}
+            cloudCredentials={cloudCredentials}
+          />
+          {/* Provider re-select modal (from navbar/settings) */}
+          <CloudProviderSelectModal
+            open={providerModalOpen}
+            initialProviders={selectedProviders}
+            initialCredentials={cloudCredentials}
+            onConfirm={handleProviderConfirm}
+          />
+        </>
       )}
     </ThemeProvider>
   );

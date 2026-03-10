@@ -55,7 +55,7 @@ export const getAuthProviders = async (): Promise<SsoProvider[]> => {
 };
 
 /**
- * Exchanges an OAuth2 authorization code for an AzureLens JWT.
+ * Exchanges an OAuth2 authorization code for an CloudLens JWT.
  * The backend uses the configured client secret to call the provider's token endpoint.
  */
 export const loginWithCode = async (
@@ -657,6 +657,64 @@ export const resolveCostAlert = async (alertId: number) => {
 
 export const evaluateCostAlerts = async () => {
   const response = await api.post('/CostAlerts/evaluate');
+  return response.data;
+};
+
+// ── Multi-cloud cost APIs (AWS + GCP) ─────────────────────────────────────────
+
+export interface AwsCredentialsPayload {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region?: string;
+  accountIds?: string[];
+}
+
+export interface GcpCredentialsPayload {
+  serviceAccountJson: string;
+  projectIds?: string[];
+}
+
+export interface CloudCostByService {
+  serviceName: string;
+  cost: number;
+}
+
+export interface CloudMonthlyCost {
+  month: string;
+  cost: number;
+  currency: string;
+}
+
+export interface CloudCostSummary {
+  accountId: string;
+  accountName: string;
+  totalCost: number;
+  currency: string;
+  startDate: string;
+  endDate: string;
+  costsByService: CloudCostByService[];
+  monthlyCosts: CloudMonthlyCost[];
+}
+
+export const getAwsCosts = async (credentials: AwsCredentialsPayload): Promise<CloudCostSummary[]> => {
+  const response = await api.post('/aws/costs', credentials);
+  return response.data;
+};
+
+export const getGcpCosts = async (credentials: GcpCredentialsPayload): Promise<CloudCostSummary[]> => {
+  const response = await api.post('/gcp/costs', credentials);
+  return response.data;
+};
+
+/** Save AWS credentials to backend (persists for background refresh). */
+export const connectAws = async (credentials: AwsCredentialsPayload): Promise<{ message: string; accountCount: number }> => {
+  const response = await api.post('/aws/connect', credentials);
+  return response.data;
+};
+
+/** Save GCP credentials to backend (persists for background refresh). */
+export const connectGcp = async (credentials: GcpCredentialsPayload): Promise<{ message: string; projectCount: number }> => {
+  const response = await api.post('/gcp/connect', credentials);
   return response.data;
 };
 

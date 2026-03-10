@@ -1,5 +1,5 @@
 /**
- * AzureLens Design System
+ * CloudLens Design System
  * Shared tokens, components, and sx helpers for consistent styling across the app.
  */
 import React, { useState, useEffect } from 'react';
