@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { CssBaseline, ThemeProvider, createTheme, PaletteMode, Box, CircularProgress, Typography } from '@mui/material';
+import { CssBaseline, ThemeProvider, createTheme, Box, CircularProgress, Typography } from '@mui/material';
 import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import OAuthCallback from './components/OAuthCallback';
@@ -28,9 +28,9 @@ function loadStoredProviders(): CloudProvider[] | null {
   return null;
 }
 
-const getTheme = (mode: PaletteMode) => createTheme({
-  palette: {
-    mode,
+const getTheme = (mode: 'light' | 'dark' = 'light') => createTheme({
+    palette: {
+      mode,
     primary: {
       main: mode === 'dark' ? '#60a5fa' : '#1455d9',
       light: '#38bdf8',
@@ -171,8 +171,8 @@ const getTheme = (mode: PaletteMode) => createTheme({
         },
       },
     },
-  },
-});
+    },
+  });
 
 // ── View states ───────────────────────────────────────────────────────────────
 type View = 'loading' | 'landing' | 'sso-login' | 'forgot-password' | 'oauth-callback' | 'cloud-select' | 'dashboard' | 'terms' | 'privacy';
@@ -184,11 +184,6 @@ function isOAuthCallbackUrl(): boolean {
 
 // ── App ───────────────────────────────────────────────────────────────────────
 function App() {
-  const [darkMode, setDarkMode] = useState<PaletteMode>(() => {
-    const saved = localStorage.getItem('darkMode');
-    return (saved === 'dark' ? 'dark' : 'light') as PaletteMode;
-  });
-
   const [view, setView] = useState<View>('loading');
   const [prevView, setPrevView] = useState<View>('landing');
   const [loginInitialTab, setLoginInitialTab] = useState<'signin' | 'signup'>('signin');
@@ -197,7 +192,7 @@ function App() {
   const [cloudCredentials, setCloudCredentials] = useState<CloudCredentials>(loadStoredCredentials() ?? {});
   const [providerModalOpen, setProviderModalOpen] = useState(false);
 
-  const theme = useMemo(() => getTheme(darkMode), [darkMode]);
+  const theme = useMemo(() => getTheme(), []);
 
   // Detect special entry points before anything else
   useEffect(() => {
@@ -320,14 +315,6 @@ function App() {
     setView(prevView);
   }, [prevView]);
 
-  const toggleDarkMode = useCallback(() => {
-    setDarkMode(prev => {
-      const next = prev === 'light' ? 'dark' : 'light';
-      localStorage.setItem('darkMode', next);
-      return next as PaletteMode;
-    });
-  }, []);
-
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
@@ -408,8 +395,6 @@ function App() {
           <Dashboard
             credentials={credentials!}
             onDisconnect={handleDisconnect}
-            darkMode={darkMode === 'dark'}
-            onToggleDarkMode={toggleDarkMode}
             currentUser={getStoredUser()}
             selectedProviders={selectedProviders}
             onChangeProviders={handleOpenProviderModal}

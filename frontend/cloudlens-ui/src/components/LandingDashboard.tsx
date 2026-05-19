@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   Box, Card, CardContent, CardActionArea, Typography, Grid, Chip,
-  Select, MenuItem, FormControl, InputLabel, Alert
+  Select, MenuItem, FormControl, Alert
 } from '@mui/material';
 import StorageIcon from '@mui/icons-material/Storage';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
@@ -71,6 +71,7 @@ const FEATURE_CARDS: FeatureCard[] = [
 ];
 
 const GROUP_ORDER = ['Infrastructure', 'Compliance & Security', 'Insights'];
+const COMMAND_RAIL = ['Inventory', 'Spend', 'Exposure', 'Compliance'];
 
 const LandingDashboard: React.FC<LandingDashboardProps> = ({
   credentials, selectedSubscriptionId, onSubscriptionChange, onNavigate,
@@ -82,11 +83,31 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
   const activeMeta = PROVIDER_META[activeProvider];
 
   return (
-    <Box sx={{ pb: 4 }}>
+    <Box sx={{ pb: 4, position: 'relative' }}>
+      <Box sx={{
+        position: 'absolute',
+        inset: { xs: '-18px -16px auto', md: '-28px -24px auto' },
+        height: 260,
+        background:
+          'radial-gradient(circle at 18% 12%, rgba(20,85,217,0.16), transparent 34%), radial-gradient(circle at 82% 8%, rgba(20,184,166,0.18), transparent 32%)',
+        pointerEvents: 'none',
+      }} />
 
       {/* ── PROVIDER TABS (shown when multiple providers selected) ── */}
       {selectedProviders.length > 0 && (
-        <Box sx={{ display: 'flex', gap: 1, mb: 3, flexWrap: 'wrap' }}>
+        <Box sx={{
+          position: 'relative',
+          display: 'inline-flex',
+          gap: 0.6,
+          mb: 3,
+          p: 0.6,
+          borderRadius: 999,
+          bgcolor: 'rgba(255,255,255,0.78)',
+          border: '1px solid rgba(148,163,184,0.22)',
+          boxShadow: '0 18px 45px rgba(31,51,86,0.10)',
+          backdropFilter: 'blur(18px)',
+          flexWrap: 'wrap',
+        }}>
           {selectedProviders.map(p => {
             const meta = PROVIDER_META[p];
             const isActive = activeProvider === p;
@@ -96,17 +117,17 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
                 onClick={() => onProviderChange?.(p)}
                 sx={{
                   cursor: 'pointer',
-                  px: 2.4, py: 1,
+                  px: 2.25, py: 0.9,
                   borderRadius: 999,
-                  fontWeight: 800,
-                  fontSize: '0.9rem',
-                  border: `1px solid ${isActive ? meta.color : 'rgba(148,163,184,0.26)'}`,
-                  bgcolor: isActive ? meta.color : 'background.paper',
+                  fontWeight: 900,
+                  fontSize: '0.82rem',
+                  border: `1px solid ${isActive ? `${meta.color}55` : 'transparent'}`,
+                  bgcolor: isActive ? meta.color : 'transparent',
                   color: isActive ? 'white' : meta.color,
-                  boxShadow: isActive ? `0 14px 30px ${meta.color}36` : '0 10px 26px rgba(15,23,42,0.06)',
-                  transition: 'all 0.18s ease',
+                  boxShadow: isActive ? `0 15px 30px ${meta.color}38` : 'none',
+                  transition: 'all 0.2s ease',
                   userSelect: 'none',
-                  '&:hover': { bgcolor: meta.color, color: 'white', transform: 'translateY(-1px)' },
+                  '&:hover': { bgcolor: isActive ? meta.color : `${meta.color}10`, transform: 'translateY(-1px)' },
                 }}
               >
                 {meta.label}
@@ -120,10 +141,11 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
       <Card sx={{
         mb: 4, color: 'white', overflow: 'hidden', position: 'relative',
         background: activeMeta.heroGradient,
-        minHeight: 210,
+        minHeight: { xs: 280, md: 230 },
         transition: 'background 0.4s ease',
-        border: '1px solid rgba(255,255,255,0.16)',
-        boxShadow: '0 34px 90px rgba(8,17,31,0.22)',
+        border: '1px solid rgba(255,255,255,0.22)',
+        boxShadow: '0 42px 110px rgba(8,17,31,0.28)',
+        borderRadius: 3,
       }}>
         <Box sx={{
           position: 'absolute',
@@ -134,38 +156,105 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
           maskImage: 'linear-gradient(90deg, black, transparent 82%)',
           pointerEvents: 'none',
         }} />
+        <Box sx={{
+          position: 'absolute',
+          width: 360,
+          height: 360,
+          right: { xs: -190, md: 56 },
+          top: { xs: 150, md: -22 },
+          borderRadius: '50%',
+          border: '1px solid rgba(255,255,255,0.18)',
+          background:
+            'radial-gradient(circle, rgba(255,255,255,0.28) 0 2px, transparent 3px 100%), radial-gradient(circle, rgba(255,255,255,0.18), transparent 62%)',
+          backgroundSize: '34px 34px, 100% 100%',
+          opacity: 0.78,
+          pointerEvents: 'none',
+        }} />
+        <Box sx={{
+          position: 'absolute',
+          right: { xs: 22, md: 56 },
+          bottom: { xs: 24, md: 28 },
+          width: { xs: 230, md: 360 },
+          display: 'grid',
+          gap: 1,
+        }}>
+          {COMMAND_RAIL.map((label, index) => (
+            <Box key={label} sx={{
+              width: `${92 - index * 9}%`,
+              ml: 'auto',
+              px: 1.5,
+              py: 1,
+              borderRadius: 2,
+              bgcolor: 'rgba(255,255,255,0.12)',
+              border: '1px solid rgba(255,255,255,0.18)',
+              backdropFilter: 'blur(18px)',
+              boxShadow: '0 16px 36px rgba(0,0,0,0.16)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+            }}>
+              <Typography variant="caption" sx={{ fontWeight: 900, color: 'rgba(255,255,255,0.86)' }}>
+                {label}
+              </Typography>
+              <Box sx={{
+                width: 64 - index * 6,
+                height: 5,
+                borderRadius: 999,
+                background: index % 2 === 0
+                  ? 'linear-gradient(90deg, #7dd3fc, #5eead4)'
+                  : 'linear-gradient(90deg, #fbbf24, #fb7185)',
+              }} />
+            </Box>
+          ))}
+        </Box>
 
-        <CardContent sx={{ p: 4, position: 'relative' }}>
-          <Typography variant="overline" sx={{ opacity: 0.78, letterSpacing: 2, fontSize: '0.62rem', fontWeight: 800 }}>
-            MULTI-CLOUD MANAGEMENT PLATFORM
+        <CardContent sx={{
+          p: { xs: 3, md: 4 },
+          position: 'relative',
+          minHeight: { xs: 280, md: 230 },
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'flex-start',
+          justifyContent: 'center',
+          maxWidth: { xs: '100%', md: 560 },
+        }}>
+          <Typography variant="overline" sx={{ opacity: 0.82, letterSpacing: 2, fontSize: '0.62rem', fontWeight: 900 }}>
+            MULTI-CLOUD OVERVIEW
           </Typography>
-          <Typography variant="h4" sx={{ fontWeight: 900, mb: 0.5, lineHeight: 1.12, fontSize: { xs: '2rem', md: '2.45rem' } }}>
-            Welcome to CloudLens
+          <Typography variant="h4" sx={{ fontWeight: 950, mb: 0.8, lineHeight: 1.04, fontSize: { xs: '2rem', md: '2.45rem' }, maxWidth: 520 }}>
+            Your cloud at a glance
           </Typography>
-          <Typography variant="body1" sx={{ opacity: 0.86, mb: 3, maxWidth: 650 }}>
-            {activeProvider === 'azure'
-              ? 'A polished command center for costs, resources, risk, compliance, and cloud operations.'
-              : `Viewing ${activeMeta.label} — select a feature below`}
+          <Typography variant="body1" sx={{ opacity: 0.86, mb: 3, maxWidth: 470, fontSize: { xs: '0.94rem', md: '1rem' } }}>
+            Pick a subscription to activate resources, costs, security, compliance, and AI insights.
           </Typography>
 
           {activeProvider === 'azure' && (
-            <FormControl sx={{ minWidth: 380 }}>
-              <InputLabel sx={{ color: 'rgba(255,255,255,0.8)', '&.Mui-focused': { color: 'white' } }}>
-                Select Subscription
-              </InputLabel>
+            <FormControl sx={{ width: { xs: '100%', sm: 380 } }}>
               <Select
                 value={selectedSubscriptionId}
-                label="Select Subscription"
+                displayEmpty
                 onChange={e => onSubscriptionChange(e.target.value)}
+                renderValue={(value) => {
+                  if (!value) return 'Select Subscription';
+                  return credentials.subscriptions?.find(sub => sub.subscriptionId === value)?.displayName ?? value;
+                }}
+                inputProps={{ 'aria-label': 'Select subscription' }}
                 sx={{
                   bgcolor: 'rgba(255,255,255,0.16)',
                   backdropFilter: 'blur(18px)',
                   color: 'white',
+                  borderRadius: 2,
+                  fontWeight: 700,
                   '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.4)' },
                   '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.8)' },
                   '& .MuiSvgIcon-root': { color: 'white' },
                 }}
               >
+                {(credentials.subscriptions?.length ?? 0) === 0 && (
+                  <MenuItem value="" disabled>
+                    No subscriptions available
+                  </MenuItem>
+                )}
                 {credentials.subscriptions?.map(sub => (
                   <MenuItem key={sub.subscriptionId} value={sub.subscriptionId}>
                     {sub.displayName}
@@ -186,8 +275,18 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
       </Card>
 
       {activeProvider === 'azure' && !isSubscriptionSelected && (
-        <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
-          Select a subscription above to enable all features.
+        <Alert
+          severity="info"
+          sx={{
+            mb: 3,
+            borderRadius: 3,
+            bgcolor: 'rgba(224,242,254,0.76)',
+            border: '1px solid rgba(14,165,233,0.18)',
+            boxShadow: '0 18px 48px rgba(14,165,233,0.10)',
+            alignItems: 'center',
+          }}
+        >
+          Select a subscription to enable all modules.
         </Alert>
       )}
 
@@ -200,35 +299,62 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
               <Grid item xs={12} sm={6} md={4} lg={3} key={card.id}>
                 <Card sx={{
                   height: '100%',
-                  opacity: (activeProvider !== 'azure' || isSubscriptionSelected) ? 1 : 0.45,
-                  transition: 'all 0.22s ease',
-                  border: '1px solid rgba(148,163,184,0.18)',
-                  background: (theme) => theme.palette.mode === 'dark'
-                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.78))'
-                    : 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,251,255,0.86))',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  opacity: 1,
+                  transition: 'transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease',
+                  border: `1px solid ${card.color}1f`,
+                  background:
+                    `linear-gradient(180deg, ${card.color}0d 0%, rgba(255,255,255,0.92) 42%, rgba(248,251,255,0.88) 100%)`,
+                  boxShadow: '0 18px 48px rgba(31,51,86,0.08)',
+                  '&:before': {
+                    content: '""',
+                    position: 'absolute',
+                    inset: 0,
+                    background:
+                      `radial-gradient(circle at 18% 0%, ${card.color}22, transparent 34%), linear-gradient(90deg, ${card.color}, transparent 52%)`,
+                    height: 4,
+                    pointerEvents: 'none',
+                  },
+                  '&:after': {
+                    content: '""',
+                    position: 'absolute',
+                    width: 120,
+                    height: 120,
+                    right: -58,
+                    top: -58,
+                    borderRadius: '50%',
+                    border: `1px solid ${card.color}1f`,
+                    background: `${card.color}0a`,
+                    pointerEvents: 'none',
+                  },
                   '&:hover': (activeProvider !== 'azure' || isSubscriptionSelected) ? {
-                    boxShadow: `0 22px 52px ${card.color}22`,
-                    transform: 'translateY(-4px)',
+                    boxShadow: `0 26px 62px ${card.color}24`,
+                    transform: 'translateY(-5px)',
                     borderColor: card.color,
-                    background: (theme: any) => theme.palette.mode === 'dark'
-                      ? `linear-gradient(180deg, ${card.color}28, rgba(15,23,42,0.92))`
-                      : `linear-gradient(180deg, ${card.color}10, rgba(255,255,255,0.94))`,
+                    background: `linear-gradient(180deg, ${card.color}14, rgba(255,255,255,0.95) 52%, rgba(248,251,255,0.92))`,
                   } : {},
                 }}>
                   <CardActionArea
                     onClick={() => (activeProvider !== 'azure' || isSubscriptionSelected) && onNavigate(card.id)}
                     disabled={activeProvider === 'azure' && !isSubscriptionSelected}
-                    sx={{ height: '100%', p: 0 }}
+                    sx={{
+                      height: '100%',
+                      p: 0,
+                      cursor: activeProvider === 'azure' && !isSubscriptionSelected ? 'default' : 'pointer',
+                      '&.Mui-disabled': { opacity: 1 },
+                    }}
                   >
-                    <CardContent sx={{ p: 2.5 }}>
+                    <CardContent sx={{ p: 2.6, position: 'relative', minHeight: 150 }}>
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
                         <Box sx={{
-                          width: 48, height: 48, borderRadius: 2,
-                          background: `linear-gradient(135deg, ${card.color}20, rgba(255,255,255,0.85))`,
-                          border: `1px solid ${card.color}20`,
+                          width: 52, height: 52, borderRadius: 2.2,
+                          background: `linear-gradient(135deg, ${card.color}20, rgba(255,255,255,0.92))`,
+                          border: `1px solid ${card.color}24`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: card.color,
-                          transition: 'background 0.2s',
+                          boxShadow: `0 16px 34px ${card.color}18`,
+                          transition: 'background 0.2s, transform 0.2s',
                         }}>
                           {card.icon}
                         </Box>
@@ -242,9 +368,24 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
                       <Typography variant="subtitle1" sx={{ fontWeight: 700, mb: 0.5 }}>
                         {card.title}
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', lineHeight: 1.5 }}>
+                      <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem', lineHeight: 1.5, minHeight: 39 }}>
                         {card.description}
                       </Typography>
+                      {activeProvider === 'azure' && !isSubscriptionSelected && (
+                        <Chip
+                          label="Preview"
+                          size="small"
+                          sx={{
+                            mt: 1.8,
+                            height: 22,
+                            bgcolor: `${card.color}12`,
+                            color: card.color,
+                            border: `1px solid ${card.color}1f`,
+                            fontSize: '0.66rem',
+                            fontWeight: 900,
+                          }}
+                        />
+                      )}
                     </CardContent>
                   </CardActionArea>
                 </Card>

@@ -102,7 +102,18 @@ export function useCacheStatus() {
   }, []);
 
   const triggerRefresh = useCallback(async () => {
-    await fetch(`${CACHE_SERVICE_URL}/refresh`, { method: 'POST' });
+    let response: Response;
+
+    try {
+      response = await fetch(`${CACHE_SERVICE_URL}/refresh`, { method: 'POST' });
+    } catch {
+      throw new Error('Cache refresh service is unavailable. Check that the cache service is running, then try again.');
+    }
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => '');
+      throw new Error(message || `Cache refresh failed with status ${response.status}.`);
+    }
   }, []);
 
   return { status, triggerRefresh };

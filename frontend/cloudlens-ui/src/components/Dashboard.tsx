@@ -10,6 +10,7 @@ import {
   Breadcrumbs,
   Link,
   Chip,
+  Tooltip,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
 import StorageIcon from '@mui/icons-material/Storage';
@@ -34,9 +35,7 @@ import BuildIcon from '@mui/icons-material/Build';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import HomeIcon from '@mui/icons-material/Home';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import Brightness4Icon from '@mui/icons-material/Brightness4';
-import Brightness7Icon from '@mui/icons-material/Brightness7';
-import { AzureCredentials, AzureResource, CostData, SecurityRecommendation } from '../types';
+import { AzureCredentials } from '../types';
 import { CloudProvider, CloudCredentials } from './CloudProviderSelectModal';
 import ResourcesTab from './ResourcesTab';
 import CostsTab from './CostsTab';
@@ -44,7 +43,6 @@ import RecommendationsTab from './RecommendationsTab';
 import SettingsTab from './SettingsTab';
 import AIInsightsTab from './AIInsightsTab';
 import CloudAccountsTab from './CloudAccountsTab';
-import SubscriptionDashboard from './SubscriptionDashboard';
 import LandingDashboard from './LandingDashboard';
 import MonitoringTab from './MonitoringTab';
 import FinOpsDashboard from './FinOpsDashboard';
@@ -62,8 +60,6 @@ import SecretsMonitor from './SecretsMonitor';
 interface DashboardProps {
   credentials: AzureCredentials;
   onDisconnect: () => void;
-  darkMode: boolean;
-  onToggleDarkMode: () => void;
   currentUser?: { name?: string; email?: string; role?: string; profilePictureUrl?: string } | null;
   selectedProviders?: CloudProvider[];
   onChangeProviders?: () => void;
@@ -77,8 +73,15 @@ const PROVIDER_COLORS: Record<CloudProvider, string> = {
 };
 
 const APP_CHROME_GRAD = 'linear-gradient(135deg, #08111f 0%, #0f2f7a 42%, #0ea5e9 72%, #14b8a6 100%)';
+const HEADER_CONTROL_SX = {
+  color: 'white',
+  bgcolor: 'rgba(255,255,255,0.11)',
+  border: '1px solid rgba(255,255,255,0.18)',
+  boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.12)',
+  '&:hover': { bgcolor: 'rgba(255,255,255,0.18)' },
+} as const;
 
-const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMode, onToggleDarkMode, currentUser, selectedProviders = ['azure'], onChangeProviders, cloudCredentials }) => {
+const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, currentUser, selectedProviders = ['azure'], onChangeProviders, cloudCredentials }) => {
   const [activePage, setActivePage] = useState('dashboard');
   const [selectedSubscriptionId, setSelectedSubscriptionId] = useState<string>(
     credentials.subscriptions?.[0]?.subscriptionId ?? ''
@@ -133,65 +136,104 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
         sx={{
           background: APP_CHROME_GRAD,
           color: 'white',
-          px: { xs: 2, md: 3 },
-          py: 1.35,
+          px: { xs: 1.5, md: 3 },
+          py: { xs: 1, md: 1.15 },
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          boxShadow: '0 18px 48px rgba(8,17,31,0.24)',
+          gap: 2,
+          boxShadow: '0 18px 52px rgba(8,17,31,0.26)',
           borderBottom: '1px solid rgba(255,255,255,0.16)',
           position: 'sticky',
           top: 0,
           zIndex: 20,
           backdropFilter: 'blur(18px)',
+          flexWrap: { xs: 'wrap', lg: 'nowrap' },
         }}
       >
-        {/* Logo */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Box 
-            component="img" 
-            src="/logo.svg" 
-            alt="CloudLens"
-            sx={{ 
-              width: 40, 
-              height: 40,
-              filter: 'brightness(0) invert(1)' // Make logo white on blue background
-            }} 
-          />
-          <Typography variant="h5" sx={{ fontWeight: 700 }}>
-            CloudLens
-          </Typography>
-          <Chip
-            label="Control Center"
-            size="small"
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, minWidth: 0 }}>
+          <Box
             sx={{
-              ml: 0.5,
+              width: 44,
+              height: 44,
+              borderRadius: 2,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               bgcolor: 'rgba(255,255,255,0.12)',
               border: '1px solid rgba(255,255,255,0.18)',
-              color: 'rgba(255,255,255,0.86)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.14), 0 12px 30px rgba(8,17,31,0.18)',
+              flexShrink: 0,
+            }}
+          >
+            <Box
+              component="img"
+              src="/logo.svg"
+              alt=""
+              sx={{ width: 27, height: 27, filter: 'brightness(0) invert(1)' }}
+            />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" sx={{ fontWeight: 900, lineHeight: 1.05 }}>
+              CloudLens
+            </Typography>
+            <Typography
+              variant="caption"
+              sx={{
+                color: 'rgba(255,255,255,0.72)',
+                display: { xs: 'none', sm: 'block' },
+                fontWeight: 700,
+                lineHeight: 1.2,
+              }}
+            >
+              Multi-cloud command center
+            </Typography>
+          </Box>
+          <Chip
+            label="Live"
+            size="small"
+            sx={{
+              ml: { xs: 0, md: 0.75 },
+              bgcolor: 'rgba(20,184,166,0.18)',
+              border: '1px solid rgba(94,234,212,0.34)',
+              color: '#d9fffb',
               height: 24,
               fontSize: '0.68rem',
+              fontWeight: 800,
+              display: { xs: 'none', sm: 'inline-flex' },
             }}
           />
         </Box>
 
-        {/* User Info */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: { xs: 'flex-start', lg: 'flex-end' },
+            gap: { xs: 1, md: 1.25 },
+            ml: { xs: 0, lg: 'auto' },
+            width: { xs: '100%', lg: 'auto' },
+            minWidth: 0,
+            flexWrap: 'wrap',
+          }}
+        >
           {(credentials.subscriptions?.length ?? 0) > 0 && (
-            <FormControl size="small" sx={{ minWidth: 240 }}>
+            <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 230, md: 270 }, maxWidth: { xs: '100%', md: 320 } }}>
               <Select
                 value={selectedSubscriptionId}
                 onChange={(e) => setSelectedSubscriptionId(e.target.value)}
                 displayEmpty
-                sx={{ 
-                  bgcolor: 'rgba(255,255,255,0.15)',
-                  backdropFilter: 'blur(10px)',
+                sx={{
+                  bgcolor: 'rgba(255,255,255,0.13)',
+                  backdropFilter: 'blur(14px)',
                   borderRadius: 2,
                   color: 'white',
-                  '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.3)' },
-                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.5)' },
-                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'white' },
-                  '.MuiSvgIcon-root': { color: 'white' }
+                  fontWeight: 700,
+                  fontSize: '0.82rem',
+                  '.MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.24)' },
+                  '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.44)' },
+                  '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.72)' },
+                  '.MuiSvgIcon-root': { color: 'white' },
                 }}
               >
                 <MenuItem value=""><em>All Subscriptions</em></MenuItem>
@@ -203,77 +245,88 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, darkMo
               </Select>
             </FormControl>
           )}
-          
-          {/* Dark Mode Toggle */}
-          <IconButton
-            onClick={onToggleDarkMode}
-            sx={{
-              color: 'white',
-              bgcolor: 'rgba(255,255,255,0.12)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
-            }}
-            size="small"
-          >
-            {darkMode ? <Brightness7Icon /> : <Brightness4Icon />}
-          </IconButton>
 
-          {/* Active cloud provider chips — click to change */}
           <Box
-            onClick={onChangeProviders}
-            sx={{ display: 'flex', gap: 0.75, cursor: 'pointer', alignItems: 'center' }}
-            title="Change cloud providers"
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.75,
+              px: 0.75,
+              py: 0.55,
+              borderRadius: 999,
+              bgcolor: 'rgba(255,255,255,0.10)',
+              border: '1px solid rgba(255,255,255,0.16)',
+              boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.10)',
+              flexWrap: 'wrap',
+            }}
           >
-            {selectedProviders.map(p => (
-              <Chip
-                key={p}
-                label={p.toUpperCase()}
-                size="small"
-                sx={{
-                  bgcolor: PROVIDER_COLORS[p],
-                  color: 'white',
-                  fontWeight: 700,
-                  fontSize: '0.68rem',
-                  height: 22,
-                  border: '1.5px solid rgba(255,255,255,0.35)',
-                }}
-              />
-            ))}
+            <Tooltip title="Change cloud providers">
+              <Box
+                onClick={onChangeProviders}
+                sx={{ display: 'flex', gap: 0.6, cursor: 'pointer', alignItems: 'center' }}
+                role="button"
+                aria-label="Change cloud providers"
+              >
+                {selectedProviders.map(p => (
+                  <Chip
+                    key={p}
+                    label={p.toUpperCase()}
+                    size="small"
+                    sx={{
+                      bgcolor: PROVIDER_COLORS[p],
+                      color: 'white',
+                      fontWeight: 800,
+                      fontSize: '0.66rem',
+                      height: 24,
+                      border: '1px solid rgba(255,255,255,0.38)',
+                      boxShadow: `0 8px 18px ${PROVIDER_COLORS[p]}3a`,
+                    }}
+                  />
+                ))}
+              </Box>
+            </Tooltip>
           </Box>
 
-          {/* Cache refresh status */}
           <CacheStatusIndicator />
 
-          {/* Settings — opens cloud provider modal */}
-          <IconButton
-            onClick={onChangeProviders}
-            sx={{
-              color: 'white',
-              bgcolor: 'rgba(255,255,255,0.12)',
-              border: '1px solid rgba(255,255,255,0.16)',
-              '&:hover': { bgcolor: 'rgba(255,255,255,0.2)' }
-            }}
-            size="small"
-            title="Cloud provider settings"
-          >
-            <SettingsIcon />
-          </IconButton>
+          <Tooltip title="Open settings">
+            <IconButton
+              onClick={() => handlePageChange('settings')}
+              sx={HEADER_CONTROL_SX}
+              size="small"
+              aria-label="Open settings"
+            >
+              <SettingsIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, ml: 0.5 }}>
-            <Avatar sx={{ width: 38, height: 38, bgcolor: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.22)' }}>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              ml: { xs: 0, md: 0.25 },
+              pl: { xs: 0, md: 1.25 },
+              borderLeft: { xs: 'none', md: '1px solid rgba(255,255,255,0.16)' },
+              minWidth: 0,
+            }}
+          >
+            <Avatar sx={{ width: 38, height: 38, bgcolor: 'rgba(255,255,255,0.16)', border: '1px solid rgba(255,255,255,0.22)', flexShrink: 0 }}>
               <PersonIcon />
             </Avatar>
-            <Box>
-              <Typography variant="body2" sx={{ fontWeight: 600, lineHeight: 1.2 }}>
+            <Box sx={{ minWidth: 0, display: { xs: 'none', sm: 'block' } }}>
+              <Typography variant="body2" sx={{ fontWeight: 800, lineHeight: 1.2, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {currentUser?.name ?? 'Azure User'}
               </Typography>
-              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.8)', lineHeight: 1.2 }}>
+              <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.74)', lineHeight: 1.2, display: 'block', maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {selectedSubscriptionId ? selectedSubName : `${credentials.subscriptionIds?.length || 0} subscription(s)`}
               </Typography>
             </Box>
-            <IconButton size="small" onClick={onDisconnect} sx={{ color: 'white', ml: 1 }}>
-              <LogoutIcon />
-            </IconButton>
+            <Tooltip title="Sign out">
+              <IconButton size="small" onClick={onDisconnect} sx={{ ...HEADER_CONTROL_SX, ml: { xs: 0, md: 0.25 } }} aria-label="Sign out">
+                <LogoutIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
           </Box>
         </Box>
       </Box>
