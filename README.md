@@ -1,53 +1,79 @@
-# AzureLens - Azure Resource Monitor
+# CloudLens — Azure Resource Monitor & Compliance Platform
 
-A full-stack application to monitor Azure resources, costs, and security recommendations with AI-powered insights. Includes a web UI and REST API backend.
+CloudLens is a unified Azure management platform built for engineering and compliance teams. It brings cost intelligence, security compliance, infrastructure visibility, and AI-powered insights into a single, purpose-built control center — eliminating the need to context-switch between the Azure Portal, spreadsheets, and siloed monitoring tools.
 
 ## Features
 
-### Core Features
-- **Multi-Subscription Support**: Monitor resources across multiple Azure subscriptions
-- **Resource Discovery**: View all Azure resources with detailed information
-- **Cost Analysis**: Track and analyze Azure spending
-- **Security Recommendations**: Get Azure Defender/Microsoft Defender for Cloud recommendations
-- **AI Insights**: Generate intelligent recommendations using OpenAI
-- **Data Caching**: SQLite-based caching for improved performance
+### Infrastructure
+- **Resource Discovery** — Browse all Azure resources across subscriptions with filtering and search
+- **Cost Analysis** — Track spending trends and budget utilisation over time
+- **FinOps** — Detect waste, rightsizing opportunities, and cost anomalies automatically
+- **Monitoring** — AKS services, pods, alerts, and Defender secure scores
+
+### Compliance & Security (SOC 2)
+- **SOC2 Controls** — Evaluate controls against Trust Service Criteria in real time
+- **Access Reviews** — RBAC assignments, privileged users, and guest access (CC6)
+- **Change Management** — Azure Activity Log — who changed what and when (CC8)
+- **Remediation Tracker** — Track compliance gaps with owners, dates, and Jira tickets
+- **Readiness Assessment** — Pre-audit SOC2 readiness score with action items
+- **Availability** — Service health incidents and backup coverage (A1)
+- **Vulnerabilities** — Defender CVE findings, CVSS scores, and patch status (CC7.2)
+- **Network Security** — NSG risky rules, public IP exposure, and open ports (CC6.6)
+- **Secrets Monitor** — App registration secrets and Key Vault cert/secret expiry (CC6.1)
+
+### Insights
+- **Recommendations** — Defender for Cloud security recommendations
+- **AI Insights** — AI-powered cost, security, and compliance analysis
+- **SOC Incident Management** — Incident tracking with auto-remediation workflows
+
+### Platform
+- **Authentication** — Email/password, Google SSO, Microsoft SSO
+- **Multi-tenant** — Manage multiple Azure subscriptions from one account
+- **Integrations** — Jira ticket creation, Slack/Teams notifications, PDF/Excel exports
+- **Dual database** — SQLite for local development, PostgreSQL for production
 
 ## Architecture
 
 ```
-┌─────────────────┐
-│  React Web UI  │
-└────────┬────────┘
-         │
-┌────────▼────────────┐
-│  .NET 8 Web API    │
-│   (AzureLens)     │
-└────────┬────────────┘
-         │
-    ┌────▼────┐
-    │ SQLite  │
-    │  Cache  │
-    └────┬────┘
-         │
-    ┌────▼────────┐
-    │  Azure SDK  │
-    └─────────────┘
+┌─────────────────────────┐
+│     React + MUI UI      │
+│     (CloudLens UI)      │
+└────────────┬────────────┘
+             │ REST / JWT
+┌────────────▼────────────┐
+│   ASP.NET Core 8 API    │
+│     (CloudLens API)     │
+└──────┬──────────────────┘
+       │
+  ┌────┴──────────┐
+  │  SQLite (dev) │
+  │  PostgreSQL   │
+  │  (prod)       │
+  └────┬──────────┘
+       │
+  ┌────▼──────────────┐
+  │  Azure SDK /      │
+  │  Microsoft Graph  │
+  └───────────────────┘
 ```
 
 ## Tech Stack
 
-- **Frontend**: React with TypeScript, Material-UI, Recharts
-- **Backend**: .NET 8 Web API, Entity Framework Core
-- **Database**: SQLite (for caching)
-- **Cloud**: Azure SDK, Azure Resource Manager
-- **AI**: OpenAI GPT-4o
-- **Integration**: Jira REST API
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 18, TypeScript, Material UI v5, Recharts |
+| Backend | ASP.NET Core 8, Entity Framework Core |
+| Database | SQLite (local) / PostgreSQL (production) |
+| Auth | JWT Bearer, ASP.NET Identity, Google & Microsoft OAuth |
+| Cloud | Azure SDK, Azure Resource Manager, Microsoft Graph |
+| AI | OpenAI GPT-4o |
+| Integrations | Jira REST API, Slack / Teams webhooks |
 
 ## Prerequisites
 
 - .NET 8 SDK
-- Node.js (v18+)
-- Azure Service Principal with appropriate permissions:
+- Node.js 18+
+- Azure Service Principal with:
   - Reader access to subscriptions
   - Cost Management Reader
   - Security Reader
@@ -57,381 +83,189 @@ A full-stack application to monitor Azure resources, costs, and security recomme
 
 ### Option 1: Docker (Recommended)
 
-```powershell
-# Clone the repository
+```bash
 git clone <repository-url>
 cd azurelens
 
-# Set environment variables (optional)
-$env:OPENAI_API_KEY="your-key-here"
+# Optional
+export OPENAI_API_KEY=your-key-here
 
-# Start services
 docker-compose up -d
 ```
 
-Access:
 - Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
+- Backend API: http://localhost:8080
 
 ### Option 2: Local Development
 
 **Backend:**
-```powershell
-cd AzureLens.API
+```bash
+cd backend/CloudLens.API
 dotnet restore
 dotnet run
 ```
-API runs on `http://localhost:8080`
 
 **Frontend:**
-```powershell
-cd azurelens-ui
+```bash
+cd frontend/cloudlens-ui
 npm install
 npm start
 ```
-UI runs on `http://localhost:3000`
+
+### Demo Account
+
+A demo account is seeded automatically on first run:
+
+| Field | Value |
+|-------|-------|
+| Email | `demo@cloudlens.io` |
+| Password | `Demo1234!` |
 
 ## Azure Service Principal Setup
 
-Create a service principal with necessary permissions:
-
 ```bash
-# Login to Azure
 az login
 
-# Create service principal
-az ad sp create-for-rbac --name "AzureLensApp" --role Reader
+az ad sp create-for-rbac --name "CloudLensApp" --role Reader
 
-# Assign additional roles
-az role assignment create --assignee <service-principal-id> --role "Cost Management Reader"
-az role assignment create --assignee <service-principal-id> --role "Security Reader"
+az role assignment create --assignee <sp-id> --role "Cost Management Reader"
+az role assignment create --assignee <sp-id> --role "Security Reader"
 ```
 
-Save the output:
-- `appId` → Client ID
-- `password` → Client Secret
-- `tenant` → Tenant ID
-
-## Usage
-
-### Web Application
-
-1. Navigate to http://localhost:3000
-2. Enter Azure credentials (Tenant ID, Client ID, Client Secret)
-3. Click "Connect to Azure"
-4. Explore tabs:
-   - **Monitoring**: View all resources
-   - **Costs**: Analyze spending
-   - **Recommendations**: See security/cost recommendations
-   - **AI Insights**: Get AI-generated insights
-   - **Cloud Accounts**: Manage credentials
-
-### API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/azure/connect` | POST | Authenticate with Azure |
-| `/api/azure/subscriptions` | GET | Get all subscriptions |
-| `/api/azure/resources` | GET | Get resources |
-| `/api/azure/costs` | GET | Get cost analysis |
-| `/api/azure/recommendations` | GET | Get Defender recommendations |
-| `/api/azure/resource-groups` | GET | Get resource groups |
-| `/api/ai/insights` | POST | Get AI-powered insights |
-| `/api/export/resources` | POST | Export resources to PDF/Excel |
-| `/api/export/costs` | POST | Export costs to PDF/Excel |
-| `/api/export/recommendations` | POST | Export recommendations to PDF/Excel |
-| `/api/notifications/settings` | GET/PUT | Manage notification settings |
-| `/api/notifications/send` | POST | Send notification to configured channel |
-| `/api/notifications/test` | POST | Test notification configuration |
+Save the output — `appId` → Client ID, `password` → Client Secret, `tenant` → Tenant ID.
 
 ## Configuration
 
-### Backend Configuration (appsettings.json)
+### Backend (`appsettings.json`)
 
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=azurelens.db"
+    "DefaultConnection": "Data Source=cloudlens.db"
   },
-  "CacheSettings": {
-    "ResourceCacheMinutes": 30,
-    "CostCacheMinutes": 60,
-    "AIRecommendationCacheMinutes": 120
+  "Jwt": {
+    "Secret": "your-secret-min-32-chars",
+    "Issuer": "CloudLens",
+    "Audience": "CloudLens"
   },
   "OpenAI": {
     "ApiKey": "YOUR_OPENAI_API_KEY",
     "Model": "gpt-4o",
-    "MaxTokens": 2000,
-    "Temperature": 0.7
+    "MaxTokens": 2000
   }
 }
 ```
 
-### Environment Variables (Docker)
+### PostgreSQL (Production)
+
+Set `DefaultConnection` to a Postgres connection string:
+
+```
+Host=your-host;Database=cloudlens;Username=user;Password=pass
+```
+
+SQL migration scripts are in [`sql/`](sql/) — run them in order on a fresh database.
+
+### Environment Variables
 
 ```bash
 OPENAI_API_KEY=your-openai-key
 ASPNETCORE_ENVIRONMENT=Production
-ConnectionStrings__DefaultConnection=Data Source=/app/data/azurelens.db
+ConnectionStrings__DefaultConnection=Host=...
+Jwt__Secret=your-secret
 ```
 
-## Development
+## API Endpoints
 
-### Project Structure
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/auth/login` | POST | Email/password login |
+| `/api/auth/forgot-password` | POST | Request password reset token |
+| `/api/auth/reset-password` | POST | Reset password with token |
+| `/api/azure/subscriptions` | GET | List subscriptions |
+| `/api/azure/resources` | GET | List resources |
+| `/api/azure/costs` | GET | Cost analysis |
+| `/api/azure/recommendations` | GET | Defender recommendations |
+| `/api/finops/summary` | GET | FinOps waste and savings |
+| `/api/compliance/soc2` | GET | SOC2 control evaluation |
+| `/api/accessreview` | GET | RBAC and privileged access |
+| `/api/changemanagement` | GET | Activity log changes |
+| `/api/vulnerabilities` | GET | CVE findings |
+| `/api/networksecurity` | GET | NSG and exposure analysis |
+| `/api/secrets` | GET | Secrets and cert expiry |
+| `/api/ai/insights` | POST | AI-powered insights |
+| `/api/export/resources` | POST | Export to PDF/Excel |
+| `/api/notifications/settings` | GET/PUT | Notification config |
+| `/api/jira/create-ticket` | POST | Create Jira ticket |
+
+## Project Structure
 
 ```
-├── AzureLens.API/           # .NET Web API
-│   ├── Controllers/            # API endpoints
-│   ├── Services/               # Business logic
-│   ├── Models/                 # Data models
-│   └── Data/                   # EF Core context
-├── azurelens-ui/           # React frontend
-│   ├── src/
-│   │   ├── components/         # React components
-│   │   ├── services/           # API client
-│   │   └── types/              # TypeScript types
-│   └── public/
-└── docker-compose.yml          # Docker configuration
-```
-
-### Building for Production
-
-**Backend:**
-```powershell
-cd AzureLens.API
-dotnet publish -c Release -o ./publish
-```
-
-**Frontend:**
-```powershell
-cd azurelens-ui
-npm run build
-```
-
-**Docker:**
-```powershell
-docker-compose build
+├── backend/
+│   └── CloudLens.API/
+│       ├── Controllers/        # API endpoints
+│       ├── Services/           # Business logic
+│       ├── Data/               # EF Core context & entities
+│       └── sql/                # PostgreSQL migration scripts
+├── frontend/
+│   └── cloudlens-ui/
+│       └── src/
+│           ├── components/     # React components
+│           ├── services/       # API client
+│           ├── theme/          # MUI theme & design system
+│           └── types/          # TypeScript types
+├── sql/                        # Canonical PostgreSQL migrations
+└── docker-compose.yml
 ```
 
 ## Security Best Practices
 
-- **Never commit credentials** to version control
-- **Use Azure Key Vault** for production secrets
-- **Rotate Service Principal secrets** regularly
-- **Use Managed Identity** when running in Azure
-- **Limit Service Principal permissions** (least privilege)
-- **Enable MFA** on Azure accounts
-- **Review audit logs** regularly
+- Never commit credentials to version control
+- Use Azure Key Vault or environment secrets for production
+- Rotate Service Principal secrets regularly
+- Use Managed Identity when running in Azure
+- Apply least-privilege to all Service Principal roles
+- Review audit logs regularly via the Change Management module
 
-## Troubleshooting
+## Integrations
 
-### API Issues
-- Ensure Service Principal has correct permissions
-- Check subscription IDs are valid
-- Verify network connectivity to Azure
+### Jira
+Create tickets directly from compliance findings and security recommendations via the Remediation Tracker. Configure your Jira URL, email, API token, and project key in Settings.
 
-### Frontend Issues
-- Verify API is running on expected port
-- Check browser console for errors
-- Clear browser cache and cookies
+### Slack / Teams
+Send alerts and recommendations to a Slack or Teams channel via incoming webhook. Configure via `PUT /api/notifications/settings`.
 
-## Contributing
-
-Contributions are welcome! Please:
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+### PDF / Excel Exports
+Export resources, costs, and recommendations to `.xlsx` or PDF. Use format `0` for PDF, `1` for Excel via `/api/export/*`.
 
 ## License
 
-This project is dual-licensed under:
+This project is dual-licensed:
 
-### 1. GNU Affero General Public License v3.0 (AGPL-3.0)
+### AGPL-3.0 (Open Source)
 
-For **open source use**, this project is licensed under the **AGPL-3.0** license - see the [LICENSE](LICENSE) file for details.
+Free for personal, educational, and open-source projects. If you run a modified version as a network service, you must provide the complete source code to your users.
 
-**What this means for open source users:**
-- ✅ **Free to use** - For personal, non-commercial, and open source projects
-- ✅ **Free to modify** - You can change the code
-- ✅ **Must share modifications** - If you modify and deploy as a service, you must make your source code available
-- ✅ **Must use AGPL-3.0** - Any derivative work must also be AGPL-3.0
-- ⚠️ **Network copyleft** - If you run this as a web service, users must have access to the source code
+### Commercial License
 
-**IMPORTANT for SaaS/Service Providers:**
-If you run a modified version of AzureLens as a network service (SaaS, internal company service, etc.), you are **required to provide the complete source code** to your users under AGPL-3.0.
+Required for:
+- Internal company use with proprietary modifications
+- SaaS / hosted services without sharing source code
+- Embedded use in closed-source products
 
-### 2. Commercial License
+Contact: kartik_ramachandran@outlook.com
 
-For **commercial use** without AGPL-3.0 obligations, you must obtain a commercial license.
-
-**Who needs a commercial license?**
-- 🏢 Companies using AzureLens internally without sharing source code
-- 💼 SaaS providers offering AzureLens as a service
-- 🔒 Organizations that need proprietary modifications
-- 🚀 Businesses that cannot comply with AGPL-3.0 requirements
-
-**Commercial license benefits:**
-- ✅ Use in closed-source/proprietary products
-- ✅ No requirement to share source code
-- ✅ Host as SaaS without AGPL obligations
-- ✅ Priority support and custom features
-- ✅ Legal protection and indemnification
-
-**Contact for commercial licensing:**
-- Email: kartik_ramachandran@outlook.com
-
-### Which License Do I Need?
-
-| Use Case | License Required |
-|----------|------------------|
-| Personal project | AGPL-3.0 (Free) |
+| Use Case | License |
+|----------|---------|
+| Personal / learning | AGPL-3.0 (Free) |
 | Open source project | AGPL-3.0 (Free) |
-| Learning/Education | AGPL-3.0 (Free) |
-| Internal company use (no modifications) | AGPL-3.0 (Free) |
-| Internal company use (with modifications) | **Commercial License** |
-| SaaS/Cloud service | **Commercial License** |
-| Embedded in proprietary product | **Commercial License** |
-| Cannot share source code | **Commercial License** |
+| Internal use, no modifications | AGPL-3.0 (Free) |
+| Internal use with modifications | Commercial |
+| SaaS / hosted service | Commercial |
+| Proprietary product | Commercial |
 
-### Contributing
-By contributing to this project, you agree that your contributions will be licensed under the AGPL-3.0 license.
-
-## Optional Integrations
-
-The following integrations are available in the codebase but not required for core functionality:
-
-### Jira Integration
-Create tickets directly from Azure recommendations. To enable:
-
-1. **Configure Jira settings** via the UI (Cloud Accounts tab)
-2. **Required fields:**
-   - Jira URL
-   - Username/Email
-   - API Token
-   - Project Key
-
-3. **API Endpoints:**
-   - `GET/PUT /api/jira/settings` - Manage Jira configuration
-   - `POST /api/jira/create-ticket` - Create ticket from recommendation
-
-4. **Usage:**
-   - View recommendations in the UI
-   - Click "Create Jira Ticket" button
-   - Automatically populated with recommendation details
-
-This integration is useful for teams that want to track Azure recommendations in their existing workflow management system.
-
-### Slack/Teams Notifications
-Send Azure alerts and recommendations to Slack or Microsoft Teams channels. To enable:
-
-1. **Create a webhook:**
-   - **Slack**: Create an Incoming Webhook in your Slack workspace
-   - **Teams**: Create an Incoming Webhook connector in your Teams channel
-
-2. **Configure via API:**
-```bash
-curl -X PUT http://localhost:8080/api/notifications/settings \
-  -H "Content-Type: application/json" \
-  -d '{
-    "channelType": 0,
-    "webhookUrl": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
-    "channelName": "#azure-alerts",
-    "isEnabled": true
-  }'
-```
-
-3. **Send notifications:**
-```bash
-curl -X POST http://localhost:8080/api/notifications/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "title": "High Severity Security Alert",
-    "message": "Critical security recommendation requires attention",
-    "color": "#d13438",
-    "fields": [
-      {"name": "Severity", "value": "High", "isShort": true},
-      {"name": "Category", "value": "Security", "isShort": true}
-    ]
-  }'
-```
-
-**Use cases:**
-- Alert on high-severity security recommendations
-- Daily/weekly cost summaries
-- Resource provisioning notifications
-- Compliance violation alerts
-
-### Report Exports (PDF/Excel)
-Export Azure data to downloadable reports for sharing and archiving.
-
-**Available exports:**
-- **Resources**: List all resources with details
-- **Costs**: Cost analysis with date ranges
-- **Recommendations**: Security and cost optimization recommendations
-
-**Export via API:**
-```bash
-# Export resources to Excel
-curl -X POST http://localhost:8080/api/export/resources \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "your-session-id",
-    "subscriptionIds": ["sub-id"],
-    "format": 1
-  }' \
-  --output resources.xlsx
-
-# Export costs to Excel
-curl -X POST http://localhost:8080/api/export/costs \
-  -H "Content-Type: application/json" \
-  -d '{
-    "sessionId": "your-session-id",
-    "format": 1,
-    "startDate": "2026-01-01",
-    "endDate": "2026-01-31"
-  }' \
-  --output costs.xlsx
-```
-
-**Format options:**
-- `0` = PDF (HTML format)
-- `1` = Excel (.xlsx)
-
-**Use cases:**
-- Monthly executive reports
-- Audit documentation
-- Budget planning
-- Stakeholder communications
-
-## Roadmap
-
-### Planned Enhancements
-- [ ] Multi-cloud support (AWS, GCP)
-- [ ] Advanced cost optimization recommendations
-- [ ] Custom dashboards and reports
-- [ ] Role-based access control (RBAC)
-- [ ] Webhook notifications for alerts
-- [ ] Azure DevOps integration
-- [ ] ServiceNow integration
-- [x] **Slack/Teams notifications** - ✅ Implemented
-- [x] **PDF/Excel report exports** - ✅ Implemented
-- [ ] Historical trend analysis
-- [ ] Resource tagging recommendations
-- [ ] Compliance reporting (SOC2, ISO27001, etc.)
-- [ ] Budget alerts and forecasting
-- [ ] Resource lifecycle management
-- [ ] Auto-remediation workflows
-- [ ] Custom policy engine
-
-### Potential Integrations
-- [ ] PagerDuty for incident management
-- [ ] GitHub Actions for automated workflows
-- [ ] Terraform/Bicep for IaC recommendations
-- [ ] Azure Cost Management API enhancements
-- [ ] Azure Policy integration
-- [ ] Azure Blueprints support
+By contributing to this project, you agree your contributions will be licensed under AGPL-3.0.
 
 ---
 
-**Note**: Replace `<repository-url>` with your actual repository URL when setting up.
+> Replace `<repository-url>` with your actual repository URL.
