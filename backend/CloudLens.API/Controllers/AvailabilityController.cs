@@ -1,0 +1,54 @@
+using Microsoft.AspNetCore.Mvc;
+using CloudLens.API.Models;
+using CloudLens.API.Services;
+using CloudLens.API.Data;
+using CloudLens.API.Data.Entities;
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+
+namespace CloudLens.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class AvailabilityController : ControllerBase
+{
+    private readonly IAvailabilityService _service;
+    private readonly ICredentialCacheService _credentialCache;
+    private readonly AppDbContext _dbContext;
+
+    public AvailabilityController(IAvailabilityService service, ICredentialCacheService credentialCache, AppDbContext dbContext)
+    {
+        _service = service;
+        _credentialCache = credentialCache;
+        _dbContext = dbContext;
+    }
+
+    [HttpPost("report")]
+    public async Task<IActionResult> GetReport([FromBody] SubscriptionRequest? request = null)
+    {
+        var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
+        if (credentials == null) return Unauthorized("No active credentials found");
+        return Ok(await _service.GetAvailabilityReportAsync(credentials));
+    }
+
+    private async Task<AzureCredentials?> GetGlobalCredentialsAsync(List<string>? subscriptionIds = null)
+    {
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null)
+        {
+            return null;
+        }
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = subscriptionIds 
+                ?? JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
+    }
+}
