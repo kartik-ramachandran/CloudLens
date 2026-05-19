@@ -129,7 +129,12 @@ const PwdField: React.FC<{
 
 // ── Outer shell ───────────────────────────────────────────────────────────────
 
-const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ children, wide }) => (
+const Shell: React.FC<{
+  children: React.ReactNode;
+  wide?: boolean;
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
+}> = ({ children, wide, onOpenTerms, onOpenPrivacy }) => (
   <Box sx={{
     minHeight: '100vh', display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
@@ -172,9 +177,21 @@ const Shell: React.FC<{ children: React.ReactNode; wide?: boolean }> = ({ childr
     </Card>
     <Typography variant="caption" color="text.secondary" sx={{ mt: 2.5, textAlign: 'center', position: 'relative' }}>
       By signing in, you agree to our{' '}
-      <Link href="#" underline="hover" color="primary" sx={{ fontWeight: 500 }}>Terms of Service</Link>
+      <Link
+        component="button" type="button" underline="hover" color="primary"
+        sx={{ fontWeight: 500, fontSize: 'inherit', verticalAlign: 'baseline', cursor: 'pointer' }}
+        onClick={onOpenTerms}
+      >
+        Terms of Service
+      </Link>
       {' '}and{' '}
-      <Link href="#" underline="hover" color="primary" sx={{ fontWeight: 500 }}>Privacy Policy</Link>
+      <Link
+        component="button" type="button" underline="hover" color="primary"
+        sx={{ fontWeight: 500, fontSize: 'inherit', verticalAlign: 'baseline', cursor: 'pointer' }}
+        onClick={onOpenPrivacy}
+      >
+        Privacy Policy
+      </Link>
     </Typography>
   </Box>
 );
@@ -238,7 +255,10 @@ const SignInView: React.FC<{
   onSocialSignIn: (p: SocialProvider) => void;
   initiating: string | null;
   onSwitchToSignUp: () => void;
-}> = ({ socialProviders, ssoProviders, loadingProviders, onSocialSignIn, initiating, onSwitchToSignUp }) => {
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
+  onForgotPassword: () => void;
+}> = ({ socialProviders, ssoProviders, loadingProviders, onSocialSignIn, initiating, onSwitchToSignUp, onOpenTerms, onOpenPrivacy, onForgotPassword }) => {
   const [accountType, setAccountType] = useState<AccountType>('personal');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -278,7 +298,7 @@ const SignInView: React.FC<{
   };
 
   return (
-    <Shell>
+    <Shell onOpenTerms={onOpenTerms} onOpenPrivacy={onOpenPrivacy}>
       <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
         <BrandHeader title="Welcome back" subtitle="Sign in to access your Azure insights" />
 
@@ -290,62 +310,60 @@ const SignInView: React.FC<{
 
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
-        {accountType === 'enterprise' && (
-          <>
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-              <SocialBtn
-                logo={GOOGLE_LOGO}
-                label="Continue with Google (Work)"
-                loading={initiating === 'Google'}
-                onClick={() => handleSocialClick('Google')}
-              />
-              <SocialBtn
-                logo={MICROSOFT_LOGO}
-                label="Continue with Microsoft (Work)"
-                loading={initiating === 'Microsoft'}
-                onClick={() => handleSocialClick('Microsoft')}
-              />
-              {orgSsoProviders.length > 0 && orgSsoProviders.map(p => (
-              <Button
-                key={p.provider}
-                fullWidth variant="outlined"
-                disabled={initiating === p.provider}
-                onClick={() => onSocialSignIn({ provider: p.provider, clientId: p.clientId, authority: p.authority ?? '', scopes: p.scopes, redirectUri: p.redirectUri })}
-                startIcon={<ShieldOutlinedIcon sx={{ fontSize: 18, color: '#5c47d6' }} />}
-                sx={{
-                  py: 1.25, fontWeight: 750, fontSize: '0.875rem',
-                  color: '#1455d9', borderColor: 'rgba(20,85,217,0.24)',
-                  bgcolor: 'rgba(20,85,217,0.06)', justifyContent: 'center', gap: 1.5,
-                  '&:hover': { bgcolor: 'rgba(20,85,217,0.10)', borderColor: 'rgba(20,85,217,0.40)' },
-                }}
-              >
-                {initiating === p.provider ? 'Redirecting…' : `Continue with ${p.provider}`}
-              </Button>
-            ))}
-              {orgSsoProviders.length === 0 && (
-                <Button
-                  fullWidth variant="outlined"
-                  startIcon={<ShieldOutlinedIcon sx={{ fontSize: 18, color: '#5c47d6' }} />}
-                  disabled
-                  sx={{
-                    py: 1.25, fontWeight: 750, fontSize: '0.875rem',
-                    color: '#1455d9', borderColor: 'rgba(20,85,217,0.24)',
-                    bgcolor: 'rgba(20,85,217,0.06)', justifyContent: 'center', gap: 1.5, opacity: 0.7,
-                  }}
-                >
-                  Continue with your organization
-                </Button>
-              )}
-              <Box sx={{ textAlign: 'center' }}>
-                <Link href="#" variant="caption" color="primary" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
-                  Set up SSO for my organisation →
-                </Link>
-              </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          <SocialBtn
+            logo={GOOGLE_LOGO}
+            label={accountType === 'enterprise' ? 'Continue with Google (Work)' : 'Continue with Google'}
+            loading={initiating === 'Google'}
+            onClick={() => handleSocialClick('Google')}
+          />
+          <SocialBtn
+            logo={MICROSOFT_LOGO}
+            label={accountType === 'enterprise' ? 'Continue with Microsoft (Work)' : 'Continue with Microsoft'}
+            loading={initiating === 'Microsoft'}
+            onClick={() => handleSocialClick('Microsoft')}
+          />
+          {accountType === 'enterprise' && orgSsoProviders.length > 0 && orgSsoProviders.map(p => (
+            <Button
+              key={p.provider}
+              fullWidth variant="outlined"
+              disabled={initiating === p.provider}
+              onClick={() => onSocialSignIn({ provider: p.provider, clientId: p.clientId, authority: p.authority ?? '', scopes: p.scopes, redirectUri: p.redirectUri })}
+              startIcon={<ShieldOutlinedIcon sx={{ fontSize: 18, color: '#5c47d6' }} />}
+              sx={{
+                py: 1.25, fontWeight: 750, fontSize: '0.875rem',
+                color: '#1455d9', borderColor: 'rgba(20,85,217,0.24)',
+                bgcolor: 'rgba(20,85,217,0.06)', justifyContent: 'center', gap: 1.5,
+                '&:hover': { bgcolor: 'rgba(20,85,217,0.10)', borderColor: 'rgba(20,85,217,0.40)' },
+              }}
+            >
+              {initiating === p.provider ? 'Redirecting…' : `Continue with ${p.provider}`}
+            </Button>
+          ))}
+          {accountType === 'enterprise' && orgSsoProviders.length === 0 && (
+            <Button
+              fullWidth variant="outlined"
+              startIcon={<ShieldOutlinedIcon sx={{ fontSize: 18, color: '#5c47d6' }} />}
+              disabled
+              sx={{
+                py: 1.25, fontWeight: 750, fontSize: '0.875rem',
+                color: '#1455d9', borderColor: 'rgba(20,85,217,0.24)',
+                bgcolor: 'rgba(20,85,217,0.06)', justifyContent: 'center', gap: 1.5, opacity: 0.7,
+              }}
+            >
+              Continue with your organization
+            </Button>
+          )}
+          {accountType === 'enterprise' && (
+            <Box sx={{ textAlign: 'center' }}>
+              <Link href="#" variant="caption" color="primary" sx={{ fontWeight: 600, fontSize: '0.8rem' }}>
+                Set up SSO for my organisation →
+              </Link>
             </Box>
+          )}
+        </Box>
 
-            <OrDivider />
-          </>
-        )}
+        <OrDivider />
 
         {/* Email/password form */}
         <Box component="form" onSubmit={handleSubmit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -367,7 +385,9 @@ const SignInView: React.FC<{
               label={<Typography variant="body2">Remember me</Typography>}
               sx={{ mr: 0 }}
             />
-            <Link href="#" variant="body2" color="primary" fontWeight={600}>Forgot password?</Link>
+            <Link component="button" type="button" variant="body2" color="primary" fontWeight={600} onClick={onForgotPassword}>
+              Forgot password?
+            </Link>
           </Box>
 
           <Button
@@ -411,7 +431,9 @@ const SignUpView: React.FC<{
   onSocialSignIn: (p: SocialProvider) => void;
   initiating: string | null;
   onSwitchToSignIn: () => void;
-}> = ({ socialProviders, loadingProviders, onSocialSignIn, initiating, onSwitchToSignIn }) => {
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
+}> = ({ socialProviders, loadingProviders, onSocialSignIn, initiating, onSwitchToSignIn, onOpenTerms, onOpenPrivacy }) => {
   const [accountType, setAccountType] = useState<AccountType>('personal');
 
   // Personal fields
@@ -457,7 +479,7 @@ const SignUpView: React.FC<{
   const msProvider = socialProviders.find(p => p.provider === 'Microsoft');
 
   return (
-    <Shell wide={accountType === 'enterprise'}>
+    <Shell wide={accountType === 'enterprise'} onOpenTerms={onOpenTerms} onOpenPrivacy={onOpenPrivacy}>
       <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
         <BrandHeader title="Create your account" subtitle="Start monitoring your Azure environment today" />
 
@@ -532,25 +554,21 @@ const SignUpView: React.FC<{
           </Button>
         </Box>
 
-        {accountType === 'enterprise' && (
-          <>
-            <OrDivider text="OR CONTINUE WITH SSO" />
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
-              <SocialBtn
-                logo={GOOGLE_LOGO}
-                label="Continue with Google (Work)"
-                loading={initiating === 'Google'}
-                onClick={() => googleProvider ? onSocialSignIn(googleProvider) : undefined}
-              />
-              <SocialBtn
-                logo={MICROSOFT_LOGO}
-                label="Continue with Microsoft (Work)"
-                loading={initiating === 'Microsoft'}
-                onClick={() => msProvider ? onSocialSignIn(msProvider) : undefined}
-              />
-            </Box>
-          </>
-        )}
+        <OrDivider text={accountType === 'enterprise' ? 'OR CONTINUE WITH SSO' : 'OR CONTINUE WITH'} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }}>
+          <SocialBtn
+            logo={GOOGLE_LOGO}
+            label={accountType === 'enterprise' ? 'Continue with Google (Work)' : 'Continue with Google'}
+            loading={initiating === 'Google'}
+            onClick={() => googleProvider ? onSocialSignIn(googleProvider) : undefined}
+          />
+          <SocialBtn
+            logo={MICROSOFT_LOGO}
+            label={accountType === 'enterprise' ? 'Continue with Microsoft (Work)' : 'Continue with Microsoft'}
+            loading={initiating === 'Microsoft'}
+            onClick={() => msProvider ? onSocialSignIn(msProvider) : undefined}
+          />
+        </Box>
 
         <Box sx={{ textAlign: 'center', mt: 2.5 }}>
           <Typography variant="body2" color="text.secondary">
@@ -566,9 +584,14 @@ const SignUpView: React.FC<{
 
 // ── Root component ────────────────────────────────────────────────────────────
 
-interface LoginPageProps { initialTab?: 'signin' | 'signup' }
+interface LoginPageProps {
+  initialTab?: 'signin' | 'signup';
+  onOpenTerms: () => void;
+  onOpenPrivacy: () => void;
+  onForgotPassword: () => void;
+}
 
-const LoginPage: React.FC<LoginPageProps> = ({ initialTab = 'signin' }) => {
+const LoginPage: React.FC<LoginPageProps> = ({ initialTab = 'signin', onOpenTerms, onOpenPrivacy, onForgotPassword }) => {
   const [view, setView] = useState<'signin' | 'signup'>(initialTab);
   const [socialProviders, setSocialProviders] = useState<SocialProvider[]>([]);
   const [ssoProviders, setSsoProviders] = useState<SsoProvider[]>([]);
@@ -613,6 +636,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ initialTab = 'signin' }) => {
         onSocialSignIn={handleSocialSignIn}
         initiating={initiating}
         onSwitchToSignIn={() => setView('signin')}
+        onOpenTerms={onOpenTerms}
+        onOpenPrivacy={onOpenPrivacy}
       />
     );
   }
@@ -625,6 +650,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ initialTab = 'signin' }) => {
       onSocialSignIn={handleSocialSignIn}
       initiating={initiating}
       onSwitchToSignUp={() => setView('signup')}
+      onOpenTerms={onOpenTerms}
+      onOpenPrivacy={onOpenPrivacy}
+      onForgotPassword={onForgotPassword}
     />
   );
 };

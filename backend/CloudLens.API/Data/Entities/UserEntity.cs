@@ -49,4 +49,9 @@ public class UserEntity
     // Populated only for email/password accounts (null for SSO users)
     [MaxLength(512)]
     public string? PasswordHash { get; set; }
+
+    [MaxLength(128)]
+    public string? PasswordResetToken { get; set; }
+
+    public DateTime? PasswordResetTokenExpiry { get; set; }
 }

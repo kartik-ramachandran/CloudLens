@@ -245,6 +245,61 @@ public class AuthService : IAuthService
         }
     }
 
+    public async Task<(bool Success, string? Token, string? Error)> ForgotPasswordAsync(string email)
+    {
+        try
+        {
+            email = email.Trim().ToLowerInvariant();
+            var entity = await _context.Users.FirstOrDefaultAsync(u => u.Email == email && u.Provider == "email");
+
+            // Always return success to prevent email enumeration
+            if (entity == null || !entity.IsActive)
+                return (true, null, null);
+
+            var token = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+            entity.PasswordResetToken = token;
+            entity.PasswordResetTokenExpiry = DateTime.UtcNow.AddHours(1);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Password reset token generated for {Email}: {Token}", email, token);
+            return (true, token, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating password reset token");
+            return (false, null, "An error occurred. Please try again.");
+        }
+    }
+
+    public async Task<(bool Success, string? Error)> ResetPasswordAsync(string token, string newPassword)
+    {
+        try
+        {
+            var entity = await _context.Users.FirstOrDefaultAsync(u =>
+                u.PasswordResetToken == token && u.Provider == "email");
+
+            if (entity == null)
+                return (false, "Invalid or expired reset code.");
+
+            if (entity.PasswordResetTokenExpiry == null || entity.PasswordResetTokenExpiry < DateTime.UtcNow)
+                return (false, "This reset code has expired. Please request a new one.");
+
+            var hasher = new PasswordHasher<Data.Entities.UserEntity>();
+            entity.PasswordHash = hasher.HashPassword(entity, newPassword);
+            entity.PasswordResetToken = null;
+            entity.PasswordResetTokenExpiry = null;
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Password reset successfully for user {Id}", entity.Id);
+            return (true, null);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error resetting password");
+            return (false, "An error occurred. Please try again.");
+        }
+    }
+
     public async Task<(string? IdToken, string? Error)> ExchangeCodeForTokenAsync(
         Data.Entities.SsoProviderConfig config, string code, string? codeVerifier, string redirectUri)
     {

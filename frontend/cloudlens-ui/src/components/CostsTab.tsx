@@ -562,7 +562,7 @@ const CostsTab: React.FC<CostsTabProps> = ({
   }, []);
 
   const fetchAws = useCallback(async () => {
-    const creds = cloudCredentials?.aws;
+    const creds = cloudCredentials?.awsAccounts?.[0] ?? cloudCredentials?.aws;
     if (!creds?.accessKeyId) return;
     setAwsLoading(true); setAwsError('');
     try {
@@ -571,10 +571,10 @@ const CostsTab: React.FC<CostsTabProps> = ({
     } catch (err: any) {
       setAwsError(err.response?.data?.error || err.message || 'Failed to fetch AWS costs');
     } finally { setAwsLoading(false); }
-  }, [cloudCredentials?.aws]);
+  }, [cloudCredentials?.aws, cloudCredentials?.awsAccounts]);
 
   const fetchGcp = useCallback(async () => {
-    const creds = cloudCredentials?.gcp;
+    const creds = cloudCredentials?.gcpAccounts?.[0] ?? cloudCredentials?.gcp;
     if (!creds?.serviceAccountJson) return;
     setGcpLoading(true); setGcpError('');
     try {
@@ -583,12 +583,15 @@ const CostsTab: React.FC<CostsTabProps> = ({
     } catch (err: any) {
       setGcpError(err.response?.data?.error || err.message || 'Failed to fetch GCP costs');
     } finally { setGcpLoading(false); }
-  }, [cloudCredentials?.gcp]);
+  }, [cloudCredentials?.gcp, cloudCredentials?.gcpAccounts]);
 
   // Auto-fetch on mount / credential change
   useEffect(() => { fetchAzure(); }, [credentials.sessionId, credentials.subscriptionIds?.join(',')]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (cloudCredentials?.aws?.accessKeyId && awsData.length === 0) fetchAws(); }, [cloudCredentials?.aws?.accessKeyId]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (cloudCredentials?.gcp?.serviceAccountJson && gcpData.length === 0) fetchGcp(); }, [cloudCredentials?.gcp?.serviceAccountJson]); // eslint-disable-line react-hooks/exhaustive-deps
+  const firstAwsCredential = cloudCredentials?.awsAccounts?.[0] ?? cloudCredentials?.aws;
+  const firstGcpCredential = cloudCredentials?.gcpAccounts?.[0] ?? cloudCredentials?.gcp;
+
+  useEffect(() => { if (firstAwsCredential?.accessKeyId && awsData.length === 0) fetchAws(); }, [firstAwsCredential?.accessKeyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (firstGcpCredential?.serviceAccountJson && gcpData.length === 0) fetchGcp(); }, [firstGcpCredential?.serviceAccountJson]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const getSubscriptionName = useCallback((resourceId: string): string => {
     const match = resourceId.match(/\/subscriptions\/([^/]+)/);
@@ -630,7 +633,7 @@ const CostsTab: React.FC<CostsTabProps> = ({
           loading={awsLoading}
           error={awsError}
           onRefresh={fetchAws}
-          noCredentials={!cloudCredentials?.aws?.accessKeyId}
+          noCredentials={!firstAwsCredential?.accessKeyId}
           onConnect={onChangeProviders}
         />
       )}
@@ -645,7 +648,7 @@ const CostsTab: React.FC<CostsTabProps> = ({
           loading={gcpLoading}
           error={gcpError}
           onRefresh={fetchGcp}
-          noCredentials={!cloudCredentials?.gcp?.serviceAccountJson}
+          noCredentials={!firstGcpCredential?.serviceAccountJson}
           onConnect={onChangeProviders}
         />
       )}
