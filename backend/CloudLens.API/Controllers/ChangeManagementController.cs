@@ -1,0 +1,54 @@
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using CloudLens.API.Models;
+using CloudLens.API.Services;
+using CloudLens.API.Data;
+using CloudLens.API.Data.Entities;
+using System.Text.Json;
+
+namespace CloudLens.API.Controllers;
+
+[ApiController]
+[Route("api/[controller]")]
+public class ChangeManagementController : ControllerBase
+{
+    private readonly IChangeManagementService _service;
+    private readonly AppDbContext _dbContext;
+
+    public ChangeManagementController(IChangeManagementService service, AppDbContext dbContext)
+    {
+        _service = service;
+        _dbContext = dbContext;
+    }
+
+    private async Task<AzureCredentials?> GetGlobalCredentialsAsync(List<string>? subscriptionIds = null)
+    {
+        var globalCred = await _dbContext.GlobalAzureCredentials
+            .FirstOrDefaultAsync(c => c.IsActive);
+        
+        if (globalCred == null) return null;
+
+        return new AzureCredentials
+        {
+            TenantId = globalCred.TenantId,
+            ClientId = globalCred.ClientId,
+            ClientSecret = globalCred.ClientSecret,
+            SubscriptionIds = subscriptionIds 
+                ?? JsonSerializer.Deserialize<List<string>>(globalCred.SubscriptionIdsJson) 
+                ?? new List<string>()
+        };
+    }
+
+    [HttpPost("report")]
+    public async Task<IActionResult> GetReport([FromBody] ChangeManagementRequest? request = null)
+    {
+        var credentials = await GetGlobalCredentialsAsync(request?.SubscriptionIds);
+        if (credentials == null) return Unauthorized("No active credentials found");
+        return Ok(await _service.GetActivityLogAsync(credentials, request?.Days ?? 30));
+    }
+}
+
+public class ChangeManagementRequest : SubscriptionRequest
+{
+    public int Days { get; set; } = 30;
+}
