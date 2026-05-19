@@ -41,3 +41,9 @@ Thumbs.db
 *.claude
 claude-artifacts/
 .claude-cache/
+
+# App settings — keep secrets out of source control
+# Copy appsettings.template.json to appsettings.json locally and fill in values
+appsettings.json
+appsettings.Development.json
+!appsettings.Production.json
