@@ -84,7 +84,7 @@ CloudLens is a unified Azure management platform built for engineering and compl
 ### Option 1: Docker (Recommended)
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/kartik-ramachandran/CloudLens.git
 cd azurelens
 
 # Optional
@@ -268,4 +268,3 @@ By contributing to this project, you agree your contributions will be licensed u
 
 ---
 
-> Replace `<repository-url>` with your actual repository URL.
