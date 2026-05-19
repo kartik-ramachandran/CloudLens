@@ -405,7 +405,51 @@ public class AuthController : ControllerBase
             return StatusCode(500, new { error = "Internal server error" });
         }
     }
+
+    /// <summary>
+    /// POST /api/auth/forgot-password
+    /// Generates a password reset token. Returns it directly for local/dev use.
+    /// </summary>
+    [HttpPost("forgot-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Email))
+            return BadRequest(new { success = false, error = "Email is required." });
+
+        var (success, token, error) = await _authService.ForgotPasswordAsync(request.Email);
+
+        if (!success)
+            return StatusCode(500, new { success = false, error });
+
+        return Ok(new { success = true, resetToken = token });
+    }
+
+    /// <summary>
+    /// POST /api/auth/reset-password
+    /// Validates reset token and updates password.
+    /// </summary>
+    [HttpPost("reset-password")]
+    [AllowAnonymous]
+    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))
+            return BadRequest(new { success = false, error = "Reset code and new password are required." });
+
+        if (request.NewPassword.Length < 8)
+            return BadRequest(new { success = false, error = "Password must be at least 8 characters." });
+
+        var (success, error) = await _authService.ResetPasswordAsync(request.Token, request.NewPassword);
+
+        if (!success)
+            return BadRequest(new { success = false, error });
+
+        return Ok(new { success = true });
+    }
 }
+
+public class ForgotPasswordRequest { public string Email { get; set; } = ""; }
+public class ResetPasswordRequest  { public string Token { get; set; } = ""; public string NewPassword { get; set; } = ""; }
 
 public class UpdateRoleRequest
 {

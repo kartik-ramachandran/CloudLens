@@ -87,6 +87,18 @@ export const loginWithEmail = async (email: string, password: string): Promise<L
   return response.data;
 };
 
+/** Requests a password reset token for the given email. */
+export const forgotPassword = async (email: string): Promise<{ success: boolean; resetToken?: string; error?: string }> => {
+  const response = await api.post('/auth/forgot-password', { email });
+  return response.data;
+};
+
+/** Resets a password using a reset token. */
+export const resetPassword = async (token: string, newPassword: string): Promise<{ success: boolean; error?: string }> => {
+  const response = await api.post('/auth/reset-password', { token, newPassword });
+  return response.data;
+};
+
 /** Returns Google/Microsoft OAuth client IDs configured in appsettings (for the public login page). */
 export const getSocialProviders = async (): Promise<{ provider: string; clientId: string; authority: string }[]> => {
   const response = await api.get('/auth/social-providers');

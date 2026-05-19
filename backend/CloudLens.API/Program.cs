@@ -176,103 +176,11 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        // EnsureCreated creates the full schema on a brand-new database.
-        // On an existing database it is a no-op, so we also run explicit
-        // CREATE TABLE IF NOT EXISTS for tables added after the initial release.
         db.Database.EnsureCreated();
 
         bool isPostgres = db.Database.IsNpgsql();
-
-        if (isPostgres)
-        {
-            // ── PostgreSQL ────────────────────────────────────────────────────
-            // Remove orphan rows with NULL Id (left by any previous bad INSERT).
-            db.Database.ExecuteSqlRaw(@"DELETE FROM ""GlobalAzureCredentials"" WHERE ""Id"" IS NULL;");
-
-            db.Database.ExecuteSqlRaw(@"
-                CREATE TABLE IF NOT EXISTS ""Users"" (
-                    ""Id""                SERIAL PRIMARY KEY,
-                    ""Email""             TEXT NOT NULL DEFAULT '',
-                    ""Name""              TEXT NOT NULL DEFAULT '',
-                    ""ProfilePictureUrl"" TEXT,
-                    ""Provider""          TEXT NOT NULL DEFAULT '',
-                    ""ProviderId""        TEXT NOT NULL DEFAULT '',
-                    ""TenantId""          TEXT,
-                    ""CreatedAt""         TIMESTAMP NOT NULL DEFAULT NOW(),
-                    ""LastLoginAt""       TIMESTAMP NOT NULL DEFAULT NOW(),
-                    ""IsActive""          BOOLEAN NOT NULL DEFAULT TRUE,
-                    ""Role""              INTEGER NOT NULL DEFAULT 1,
-                    ""OrganizationName""  TEXT
-                );");
-
-            db.Database.ExecuteSqlRaw(@"
-                CREATE TABLE IF NOT EXISTS ""SsoProviderConfigs"" (
-                    ""Id""               SERIAL PRIMARY KEY,
-                    ""Provider""         TEXT NOT NULL DEFAULT '',
-                    ""ClientId""         TEXT NOT NULL DEFAULT '',
-                    ""ClientSecret""     TEXT NOT NULL DEFAULT '',
-                    ""Authority""        TEXT,
-                    ""TenantId""         TEXT,
-                    ""RedirectUri""      TEXT,
-                    ""Scopes""           TEXT,
-                    ""IsEnabled""        BOOLEAN NOT NULL DEFAULT TRUE,
-                    ""CreatedAt""        TIMESTAMP NOT NULL DEFAULT NOW(),
-                    ""UpdatedAt""        TIMESTAMP NOT NULL DEFAULT NOW(),
-                    ""OrganizationName"" TEXT
-                );");
-        }
-        else
-        {
-            // ── SQLite ────────────────────────────────────────────────────────
-            // Remove orphan rows with NULL Id (left by the EF Core 8 RETURNING bug).
-            db.Database.ExecuteSqlRaw(@"DELETE FROM ""GlobalAzureCredentials"" WHERE ""Id"" IS NULL;");
-            db.Database.ExecuteSqlRaw(@"DELETE FROM ""Users"" WHERE ""Id"" IS NULL;");
-
-            db.Database.ExecuteSqlRaw(@"
-                CREATE TABLE IF NOT EXISTS ""Users"" (
-                    ""Id""                INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ""Email""             TEXT NOT NULL DEFAULT '',
-                    ""Name""              TEXT NOT NULL DEFAULT '',
-                    ""ProfilePictureUrl"" TEXT,
-                    ""Provider""          TEXT NOT NULL DEFAULT '',
-                    ""ProviderId""        TEXT NOT NULL DEFAULT '',
-                    ""TenantId""          TEXT,
-                    ""CreatedAt""         TEXT NOT NULL DEFAULT '',
-                    ""LastLoginAt""       TEXT NOT NULL DEFAULT '',
-                    ""IsActive""          INTEGER NOT NULL DEFAULT 1,
-                    ""Role""              INTEGER NOT NULL DEFAULT 1,
-                    ""OrganizationName""  TEXT
-                );");
-
-            db.Database.ExecuteSqlRaw(@"
-                CREATE TABLE IF NOT EXISTS ""SsoProviderConfigs"" (
-                    ""Id""               INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ""Provider""         TEXT NOT NULL DEFAULT '',
-                    ""ClientId""         TEXT NOT NULL DEFAULT '',
-                    ""ClientSecret""     TEXT NOT NULL DEFAULT '',
-                    ""Authority""        TEXT,
-                    ""TenantId""         TEXT,
-                    ""RedirectUri""      TEXT,
-                    ""Scopes""           TEXT,
-                    ""IsEnabled""        INTEGER NOT NULL DEFAULT 1,
-                    ""CreatedAt""        TEXT NOT NULL DEFAULT '',
-                    ""UpdatedAt""        TEXT NOT NULL DEFAULT '',
-                    ""OrganizationName"" TEXT
-                );");
-        }
-
-        // Add PasswordHash column if it doesn't exist (post-release migration)
-        if (isPostgres)
-        {
-            db.Database.ExecuteSqlRaw(@"
-                ALTER TABLE ""Users"" ADD COLUMN IF NOT EXISTS ""PasswordHash"" TEXT;");
-        }
-        else
-        {
-            // SQLite: ALTER TABLE ADD COLUMN is idempotent-safe via try/catch
-            try { db.Database.ExecuteSqlRaw(@"ALTER TABLE ""Users"" ADD COLUMN ""PasswordHash"" TEXT;"); }
-            catch { /* column already exists */ }
-        }
+        var scriptName = isPostgres ? "startup-postgres.sql" : "startup-sqlite.sql";
+        ExecuteSqlScript(db, logger, Path.Combine(app.Environment.ContentRootPath, "sql", scriptName), ignoreDuplicateColumns: !isPostgres);
 
         logger.LogInformation("✅ Database initialization completed");
     }
@@ -283,3 +191,31 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+static void ExecuteSqlScript(AppDbContext db, ILogger logger, string scriptPath, bool ignoreDuplicateColumns)
+{
+    if (!File.Exists(scriptPath))
+    {
+        throw new FileNotFoundException("Database startup SQL script was not found.", scriptPath);
+    }
+
+    var statements = File.ReadAllText(scriptPath)
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    foreach (var statement in statements)
+    {
+        if (string.IsNullOrWhiteSpace(statement))
+        {
+            continue;
+        }
+
+        try
+        {
+            db.Database.ExecuteSqlRaw(statement);
+        }
+        catch (Exception ex) when (ignoreDuplicateColumns && ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
+        {
+            logger.LogDebug("Skipping existing SQLite column while applying {ScriptPath}", scriptPath);
+        }
+    }
+}

@@ -4,6 +4,10 @@ import Dashboard from './components/Dashboard';
 import LoginPage from './components/LoginPage';
 import OAuthCallback from './components/OAuthCallback';
 import CloudProviderSelectModal, { CloudProvider, CloudCredentials } from './components/CloudProviderSelectModal';
+import TermsOfServicePage from './components/TermsOfServicePage';
+import PrivacyPolicyPage from './components/PrivacyPolicyPage';
+import LandingPage from './components/LandingPage';
+import ForgotPasswordPage from './components/ForgotPasswordPage';
 import { AzureCredentials } from './types';
 import { checkGlobalCredentials } from './services/api';
 import { isAuthenticated, clearAuth, getStoredUser, storeAuth } from './utils/oauth';
@@ -171,7 +175,7 @@ const getTheme = (mode: PaletteMode) => createTheme({
 });
 
 // ── View states ───────────────────────────────────────────────────────────────
-type View = 'loading' | 'sso-login' | 'oauth-callback' | 'cloud-select' | 'dashboard';
+type View = 'loading' | 'landing' | 'sso-login' | 'forgot-password' | 'oauth-callback' | 'cloud-select' | 'dashboard' | 'terms' | 'privacy';
 
 function isOAuthCallbackUrl(): boolean {
   const params = new URLSearchParams(window.location.search);
@@ -186,6 +190,8 @@ function App() {
   });
 
   const [view, setView] = useState<View>('loading');
+  const [prevView, setPrevView] = useState<View>('landing');
+  const [loginInitialTab, setLoginInitialTab] = useState<'signin' | 'signup'>('signin');
   const [credentials, setCredentials] = useState<AzureCredentials | null>(null);
   const [selectedProviders, setSelectedProviders] = useState<CloudProvider[]>(loadStoredProviders() ?? []);
   const [cloudCredentials, setCloudCredentials] = useState<CloudCredentials>(loadStoredCredentials() ?? {});
@@ -206,7 +212,7 @@ function App() {
   const bootstrap = useCallback(async () => {
     // 1. User must have a valid JWT
     if (!isAuthenticated()) {
-      setView('sso-login');
+      setView('landing');
       return;
     }
 
@@ -256,13 +262,13 @@ function App() {
 
   const handleAuthError = useCallback(() => {
     clearAuth();
-    setView('sso-login');
+    setView('landing');
   }, []);
 
   const handleDisconnect = useCallback(() => {
     clearAuth();
     setCredentials(null);
-    setView('sso-login');
+    setView('landing');
   }, []);
 
   const handleProviderConfirm = useCallback((providers: CloudProvider[], creds: CloudCredentials) => {
@@ -277,6 +283,42 @@ function App() {
   const handleOpenProviderModal = useCallback(() => {
     setProviderModalOpen(true);
   }, []);
+
+  const handleCloseProviderModal = useCallback(() => {
+    setProviderModalOpen(false);
+  }, []);
+
+  const handleCloseInitialProviderModal = useCallback(() => {
+    setView('dashboard');
+  }, []);
+
+  const handleGoToSignIn = useCallback(() => {
+    setLoginInitialTab('signin');
+    setView('sso-login');
+  }, []);
+
+  const handleForgotPassword = useCallback(() => {
+    setView('forgot-password');
+  }, []);
+
+  const handleGetStarted = useCallback(() => {
+    setLoginInitialTab('signup');
+    setView('sso-login');
+  }, []);
+
+  const handleOpenTerms = useCallback(() => {
+    setPrevView(view);
+    setView('terms');
+  }, [view]);
+
+  const handleOpenPrivacy = useCallback(() => {
+    setPrevView(view);
+    setView('privacy');
+  }, [view]);
+
+  const handleBackFromLegal = useCallback(() => {
+    setView(prevView);
+  }, [prevView]);
 
   const toggleDarkMode = useCallback(() => {
     setDarkMode(prev => {
@@ -321,7 +363,30 @@ function App() {
         </Box>
       )}
 
-      {view === 'sso-login' && <LoginPage />}
+      {view === 'landing' && (
+        <LandingPage
+          onSignIn={handleGoToSignIn}
+          onGetStarted={handleGetStarted}
+          onOpenTerms={handleOpenTerms}
+          onOpenPrivacy={handleOpenPrivacy}
+        />
+      )}
+
+      {view === 'sso-login' && (
+        <LoginPage
+          initialTab={loginInitialTab}
+          onOpenTerms={handleOpenTerms}
+          onOpenPrivacy={handleOpenPrivacy}
+          onForgotPassword={handleForgotPassword}
+        />
+      )}
+
+      {view === 'forgot-password' && (
+        <ForgotPasswordPage onBack={handleGoToSignIn} />
+      )}
+
+      {view === 'terms' && <TermsOfServicePage onBack={handleBackFromLegal} />}
+      {view === 'privacy' && <PrivacyPolicyPage onBack={handleBackFromLegal} />}
 
       {view === 'oauth-callback' && (
         <OAuthCallback onSuccess={handleAuthSuccess} onError={handleAuthError} />
@@ -334,6 +399,7 @@ function App() {
           initialProviders={selectedProviders.length > 0 ? selectedProviders : undefined}
           initialCredentials={cloudCredentials}
           onConfirm={handleProviderConfirm}
+          onClose={handleCloseInitialProviderModal}
         />
       )}
 
@@ -355,6 +421,7 @@ function App() {
             initialProviders={selectedProviders}
             initialCredentials={cloudCredentials}
             onConfirm={handleProviderConfirm}
+            onClose={handleCloseProviderModal}
           />
         </>
       )}

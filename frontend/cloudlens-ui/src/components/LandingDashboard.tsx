@@ -203,12 +203,16 @@ const LandingDashboard: React.FC<LandingDashboardProps> = ({
                   opacity: (activeProvider !== 'azure' || isSubscriptionSelected) ? 1 : 0.45,
                   transition: 'all 0.22s ease',
                   border: '1px solid rgba(148,163,184,0.18)',
-                  background: 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,251,255,0.86))',
+                  background: (theme) => theme.palette.mode === 'dark'
+                    ? 'linear-gradient(180deg, rgba(15,23,42,0.92), rgba(15,23,42,0.78))'
+                    : 'linear-gradient(180deg, rgba(255,255,255,0.94), rgba(248,251,255,0.86))',
                   '&:hover': (activeProvider !== 'azure' || isSubscriptionSelected) ? {
                     boxShadow: `0 22px 52px ${card.color}22`,
                     transform: 'translateY(-4px)',
                     borderColor: card.color,
-                    background: `linear-gradient(180deg, ${card.color}10, rgba(255,255,255,0.94))`,
+                    background: (theme: any) => theme.palette.mode === 'dark'
+                      ? `linear-gradient(180deg, ${card.color}28, rgba(15,23,42,0.92))`
+                      : `linear-gradient(180deg, ${card.color}10, rgba(255,255,255,0.94))`,
                   } : {},
                 }}>
                   <CardActionArea

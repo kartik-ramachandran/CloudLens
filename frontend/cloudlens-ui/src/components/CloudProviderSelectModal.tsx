@@ -6,14 +6,39 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import RadioButtonUncheckedIcon from '@mui/icons-material/RadioButtonUnchecked';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CloseIcon from '@mui/icons-material/Close';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { connectAws, connectGcp } from '../services/api';
 
 export type CloudProvider = 'azure' | 'aws' | 'gcp';
 
+export interface AzureCloudCredential {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  label?: string;
+}
+
+export interface AwsCloudCredential {
+  accessKeyId: string;
+  secretAccessKey: string;
+  region: string;
+  label?: string;
+}
+
+export interface GcpCloudCredential {
+  serviceAccountJson: string;
+  label?: string;
+}
+
 export interface CloudCredentials {
-  azure?: { tenantId: string; clientId: string; clientSecret: string };
-  aws?: { accessKeyId: string; secretAccessKey: string; region: string };
-  gcp?: { serviceAccountJson: string };
+  azure?: AzureCloudCredential;
+  aws?: AwsCloudCredential;
+  gcp?: GcpCloudCredential;
+  azureAccounts?: AzureCloudCredential[];
+  awsAccounts?: AwsCloudCredential[];
+  gcpAccounts?: GcpCloudCredential[];
 }
 
 interface CloudProviderSelectModalProps {
@@ -21,6 +46,7 @@ interface CloudProviderSelectModalProps {
   initialProviders?: CloudProvider[];
   initialCredentials?: CloudCredentials;
   onConfirm: (providers: CloudProvider[], credentials: CloudCredentials) => void;
+  onClose?: () => void;
 }
 
 const PROVIDERS = [
@@ -66,40 +92,84 @@ const PROVIDERS = [
   },
 ];
 
+const fieldSx = {
+  '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.62)' },
+  '& .MuiInputBase-input': { color: 'white' },
+  '& .MuiOutlinedInput-root': {
+    borderRadius: 2,
+    background: 'rgba(15,23,42,0.40)',
+  },
+  '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.18)' },
+  '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.42)' },
+};
+
+const isAzureFilled = (account: AzureCloudCredential) =>
+  Boolean(account.tenantId || account.clientId || account.clientSecret);
+
+const isAwsFilled = (account: AwsCloudCredential) =>
+  Boolean(account.accessKeyId || account.secretAccessKey);
+
+const isGcpFilled = (account: GcpCloudCredential) =>
+  Boolean(account.serviceAccountJson);
+
+const getAzureAccounts = (credentials?: CloudCredentials): AzureCloudCredential[] => {
+  const accounts = credentials?.azureAccounts?.length
+    ? credentials.azureAccounts
+    : credentials?.azure
+      ? [credentials.azure]
+      : [];
+
+  return accounts.length > 0
+    ? accounts
+    : [{ label: 'Azure account 1', tenantId: '', clientId: '', clientSecret: '' }];
+};
+
+const getAwsAccounts = (credentials?: CloudCredentials): AwsCloudCredential[] => {
+  const accounts = credentials?.awsAccounts?.length
+    ? credentials.awsAccounts
+    : credentials?.aws
+      ? [credentials.aws]
+      : [];
+
+  return accounts.length > 0
+    ? accounts
+    : [{ label: 'AWS account 1', accessKeyId: '', secretAccessKey: '', region: 'us-east-1' }];
+};
+
+const getGcpAccounts = (credentials?: CloudCredentials): GcpCloudCredential[] => {
+  const accounts = credentials?.gcpAccounts?.length
+    ? credentials.gcpAccounts
+    : credentials?.gcp
+      ? [credentials.gcp]
+      : [];
+
+  return accounts.length > 0
+    ? accounts
+    : [{ label: 'GCP project 1', serviceAccountJson: '' }];
+};
+
 const CloudProviderSelectModal: React.FC<CloudProviderSelectModalProps> = ({
   open,
   initialProviders,
   initialCredentials,
   onConfirm,
+  onClose,
 }) => {
   const [step, setStep] = useState<0 | 1>(0);
   const [selected, setSelected] = useState<CloudProvider[]>(initialProviders ?? ['azure']);
 
-  // Azure credential fields
-  const [azureTenantId, setAzureTenantId] = useState(initialCredentials?.azure?.tenantId ?? '');
-  const [azureClientId, setAzureClientId] = useState(initialCredentials?.azure?.clientId ?? '');
-  const [azureClientSecret, setAzureClientSecret] = useState(initialCredentials?.azure?.clientSecret ?? '');
-
-  // AWS credential fields
-  const [awsKeyId, setAwsKeyId] = useState(initialCredentials?.aws?.accessKeyId ?? '');
-  const [awsSecret, setAwsSecret] = useState(initialCredentials?.aws?.secretAccessKey ?? '');
-  const [awsRegion, setAwsRegion] = useState(initialCredentials?.aws?.region ?? 'us-east-1');
-
-  // GCP credential field
-  const [gcpJson, setGcpJson] = useState(initialCredentials?.gcp?.serviceAccountJson ?? '');
+  const [azureAccounts, setAzureAccounts] = useState<AzureCloudCredential[]>(getAzureAccounts(initialCredentials));
+  const [awsAccounts, setAwsAccounts] = useState<AwsCloudCredential[]>(getAwsAccounts(initialCredentials));
+  const [gcpAccounts, setGcpAccounts] = useState<GcpCloudCredential[]>(getGcpAccounts(initialCredentials));
 
   // Re-sync state whenever the modal is (re)opened so it reflects current selections
   useEffect(() => {
     if (open) {
       setStep(0);
       setSelected(initialProviders ?? ['azure']);
-      setAzureTenantId(initialCredentials?.azure?.tenantId ?? '');
-      setAzureClientId(initialCredentials?.azure?.clientId ?? '');
-      setAzureClientSecret(initialCredentials?.azure?.clientSecret ?? '');
-      setAwsKeyId(initialCredentials?.aws?.accessKeyId ?? '');
-      setAwsSecret(initialCredentials?.aws?.secretAccessKey ?? '');
-      setAwsRegion(initialCredentials?.aws?.region ?? 'us-east-1');
-      setGcpJson(initialCredentials?.gcp?.serviceAccountJson ?? '');
+      setAzureAccounts(getAzureAccounts(initialCredentials));
+      setAwsAccounts(getAwsAccounts(initialCredentials));
+      setGcpAccounts(getGcpAccounts(initialCredentials));
     }
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -109,22 +179,57 @@ const CloudProviderSelectModal: React.FC<CloudProviderSelectModalProps> = ({
     );
   };
 
+  const updateAzureAccount = (index: number, patch: Partial<AzureCloudCredential>) => {
+    setAzureAccounts(prev => prev.map((account, i) => i === index ? { ...account, ...patch } : account));
+  };
+
+  const updateAwsAccount = (index: number, patch: Partial<AwsCloudCredential>) => {
+    setAwsAccounts(prev => prev.map((account, i) => i === index ? { ...account, ...patch } : account));
+  };
+
+  const updateGcpAccount = (index: number, patch: Partial<GcpCloudCredential>) => {
+    setGcpAccounts(prev => prev.map((account, i) => i === index ? { ...account, ...patch } : account));
+  };
+
+  const removeAzureAccount = (index: number) => {
+    setAzureAccounts(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
+  };
+
+  const removeAwsAccount = (index: number) => {
+    setAwsAccounts(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
+  };
+
+  const removeGcpAccount = (index: number) => {
+    setGcpAccounts(prev => prev.length === 1 ? prev : prev.filter((_, i) => i !== index));
+  };
+
   const handleConfirm = () => {
     const credentials: CloudCredentials = {};
-    if (selected.includes('azure') && (azureTenantId || azureClientId || azureClientSecret)) {
-      credentials.azure = { tenantId: azureTenantId, clientId: azureClientId, clientSecret: azureClientSecret };
+    const filledAzureAccounts = azureAccounts.filter(isAzureFilled);
+    const filledAwsAccounts = awsAccounts.filter(isAwsFilled);
+    const filledGcpAccounts = gcpAccounts.filter(isGcpFilled);
+
+    if (selected.includes('azure') && filledAzureAccounts.length > 0) {
+      credentials.azureAccounts = filledAzureAccounts;
+      credentials.azure = filledAzureAccounts[0];
     }
-    if (selected.includes('aws') && awsKeyId) {
-      credentials.aws = { accessKeyId: awsKeyId, secretAccessKey: awsSecret, region: awsRegion || 'us-east-1' };
+    if (selected.includes('aws') && filledAwsAccounts.length > 0) {
+      credentials.awsAccounts = filledAwsAccounts.map(account => ({ ...account, region: account.region || 'us-east-1' }));
+      credentials.aws = credentials.awsAccounts[0];
       // Persist to backend so the Azure Function can refresh AWS costs in the background
-      connectAws({ accessKeyId: awsKeyId, secretAccessKey: awsSecret, region: awsRegion || 'us-east-1' })
-        .catch(() => { /* non-blocking — user can still use live fetch */ });
+      credentials.awsAccounts.forEach(account => {
+        connectAws({ accessKeyId: account.accessKeyId, secretAccessKey: account.secretAccessKey, region: account.region || 'us-east-1' })
+          .catch(() => { /* non-blocking — user can still use live fetch */ });
+      });
     }
-    if (selected.includes('gcp') && gcpJson) {
-      credentials.gcp = { serviceAccountJson: gcpJson };
+    if (selected.includes('gcp') && filledGcpAccounts.length > 0) {
+      credentials.gcpAccounts = filledGcpAccounts;
+      credentials.gcp = filledGcpAccounts[0];
       // Persist to backend so the Azure Function can refresh GCP costs in the background
-      connectGcp({ serviceAccountJson: gcpJson })
-        .catch(() => { /* non-blocking */ });
+      filledGcpAccounts.forEach(account => {
+        connectGcp({ serviceAccountJson: account.serviceAccountJson })
+          .catch(() => { /* non-blocking */ });
+      });
     }
     onConfirm(selected, credentials);
     setStep(0);
@@ -133,6 +238,7 @@ const CloudProviderSelectModal: React.FC<CloudProviderSelectModalProps> = ({
   return (
     <Dialog
       open={open}
+      onClose={onClose}
       maxWidth="md"
       fullWidth
       PaperProps={{
@@ -145,8 +251,32 @@ const CloudProviderSelectModal: React.FC<CloudProviderSelectModalProps> = ({
       }}
     >
       {/* Header */}
-      <Box sx={{ background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', px: 4, py: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ position: 'relative', background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)', px: 4, py: 3 }}>
+        {onClose && (
+          <IconButton
+            aria-label="Close cloud setup"
+            onClick={onClose}
+            sx={{
+              position: 'absolute',
+              top: 16,
+              right: 16,
+              width: 34,
+              height: 34,
+              bgcolor: '#ef4444',
+              color: 'white',
+              border: '2px solid rgba(255,255,255,0.85)',
+              boxShadow: '0 10px 24px rgba(127,29,29,0.35)',
+              '&:hover': {
+                bgcolor: '#dc2626',
+                transform: 'scale(1.04)',
+              },
+            }}
+          >
+            <CloseIcon sx={{ fontSize: 20, fontWeight: 900 }} />
+          </IconButton>
+        )}
+
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, pr: onClose ? 6 : 0 }}>
           {step === 1 && (
             <IconButton size="small" onClick={() => setStep(0)} sx={{ color: 'white', bgcolor: 'rgba(255,255,255,0.15)', mr: 0.5 }}>
               <ArrowBackIcon fontSize="small" />
@@ -266,98 +396,176 @@ const CloudProviderSelectModal: React.FC<CloudProviderSelectModalProps> = ({
         {step === 1 && (
           <Box>
             {selected.includes('azure') && (
-              <Box sx={{ mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#0078D4' }} />
-                  <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 700 }}>Microsoft Azure</Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>Service Principal</Typography>
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#0078D4' }} />
+                    <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 800 }}>Microsoft Azure</Typography>
+                    <Chip label={`${azureAccounts.length} ${azureAccounts.length === 1 ? 'account' : 'accounts'}`} size="small" sx={{ bgcolor: 'rgba(0,120,212,0.16)', color: '#7dd3fc', border: '1px solid rgba(125,211,252,0.24)' }} />
+                  </Box>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => setAzureAccounts(prev => [...prev, { label: `Azure account ${prev.length + 1}`, tenantId: '', clientId: '', clientSecret: '' }])}
+                    sx={{ color: '#7dd3fc', borderColor: 'rgba(125,211,252,0.36)' }}
+                    variant="outlined"
+                  >
+                    Add Azure
+                  </Button>
                 </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={4}>
-                    <TextField fullWidth size="small" label="Tenant ID" value={azureTenantId}
-                      onChange={e => setAzureTenantId(e.target.value)}
-                      placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      helperText="Azure Active Directory / Entra ID tenant ID"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField fullWidth size="small" label="Client ID" value={azureClientId}
-                      onChange={e => setAzureClientId(e.target.value)}
-                      placeholder="Application (client) ID"
-                      helperText="App registration client ID"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={4}>
-                    <TextField fullWidth size="small" label="Client Secret" type="password" value={azureClientSecret}
-                      onChange={e => setAzureClientSecret(e.target.value)}
-                      placeholder="Secret value"
-                      helperText="Service principal secret"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                </Grid>
+                {azureAccounts.map((account, index) => (
+                  <Box key={`azure-${index}`} sx={{ p: 2, mb: 1.5, borderRadius: 2.5, background: 'linear-gradient(135deg, rgba(0,120,212,0.14), rgba(15,23,42,0.56))', border: '1px solid rgba(125,211,252,0.18)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, gap: 2 }}>
+                      <TextField size="small" label="Account label" value={account.label ?? ''}
+                        onChange={e => updateAzureAccount(index, { label: e.target.value })}
+                        placeholder={`Azure account ${index + 1}`}
+                        sx={{ ...fieldSx, maxWidth: 260 }}
+                      />
+                      <IconButton disabled={azureAccounts.length === 1} onClick={() => removeAzureAccount(index)}
+                        sx={{ color: '#fecaca', opacity: azureAccounts.length === 1 ? 0.35 : 1 }}>
+                        <DeleteOutlineIcon />
+                      </IconButton>
+                    </Box>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={4}>
+                        <TextField fullWidth size="small" label="Tenant ID" value={account.tenantId}
+                          onChange={e => updateAzureAccount(index, { tenantId: e.target.value })}
+                          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                          helperText="Azure Active Directory / Entra ID tenant ID"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField fullWidth size="small" label="Client ID" value={account.clientId}
+                          onChange={e => updateAzureAccount(index, { clientId: e.target.value })}
+                          placeholder="Application (client) ID"
+                          helperText="App registration client ID"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={4}>
+                        <TextField fullWidth size="small" label="Client Secret" type="password" value={account.clientSecret}
+                          onChange={e => updateAzureAccount(index, { clientSecret: e.target.value })}
+                          placeholder="Secret value"
+                          helperText="Service principal secret"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                ))}
               </Box>
             )}
 
-            {selected.includes('azure') && selected.length > 1 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 4 }} />}
+            {selected.includes('azure') && selected.length > 1 && <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 3 }} />}
 
             {selected.includes('aws') && (
-              <Box sx={{ mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#FF9900' }} />
-                  <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 700 }}>Amazon Web Services</Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>IAM Access Key</Typography>
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#FF9900' }} />
+                    <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 800 }}>Amazon Web Services</Typography>
+                    <Chip label={`${awsAccounts.length} ${awsAccounts.length === 1 ? 'account' : 'accounts'}`} size="small" sx={{ bgcolor: 'rgba(255,153,0,0.16)', color: '#fdba74', border: '1px solid rgba(253,186,116,0.28)' }} />
+                  </Box>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => setAwsAccounts(prev => [...prev, { label: `AWS account ${prev.length + 1}`, accessKeyId: '', secretAccessKey: '', region: 'us-east-1' }])}
+                    sx={{ color: '#fdba74', borderColor: 'rgba(253,186,116,0.36)' }}
+                    variant="outlined"
+                  >
+                    Add AWS
+                  </Button>
                 </Box>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} sm={5}>
-                    <TextField fullWidth size="small" label="Access Key ID" value={awsKeyId}
-                      onChange={e => setAwsKeyId(e.target.value)}
-                      placeholder="AKIAIOSFODNN7EXAMPLE"
-                      helperText="IAM user access key ID"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={5}>
-                    <TextField fullWidth size="small" label="Secret Access Key" type="password" value={awsSecret}
-                      onChange={e => setAwsSecret(e.target.value)}
-                      placeholder="••••••••••••••••"
-                      helperText="Requires ce:GetCostAndUsage permission"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={2}>
-                    <TextField fullWidth size="small" label="Region" value={awsRegion}
-                      onChange={e => setAwsRegion(e.target.value)}
-                      placeholder="us-east-1"
-                      helperText="Home region"
-                      sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiInputBase-input': { color: 'white' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                    />
-                  </Grid>
-                </Grid>
+                {awsAccounts.map((account, index) => (
+                  <Box key={`aws-${index}`} sx={{ p: 2, mb: 1.5, borderRadius: 2.5, background: 'linear-gradient(135deg, rgba(255,153,0,0.14), rgba(15,23,42,0.56))', border: '1px solid rgba(253,186,116,0.18)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, gap: 2 }}>
+                      <TextField size="small" label="Account label" value={account.label ?? ''}
+                        onChange={e => updateAwsAccount(index, { label: e.target.value })}
+                        placeholder={`AWS account ${index + 1}`}
+                        sx={{ ...fieldSx, maxWidth: 260 }}
+                      />
+                      <IconButton disabled={awsAccounts.length === 1} onClick={() => removeAwsAccount(index)}
+                        sx={{ color: '#fecaca', opacity: awsAccounts.length === 1 ? 0.35 : 1 }}>
+                        <DeleteOutlineIcon />
+                      </IconButton>
+                    </Box>
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} sm={5}>
+                        <TextField fullWidth size="small" label="Access Key ID" value={account.accessKeyId}
+                          onChange={e => updateAwsAccount(index, { accessKeyId: e.target.value })}
+                          placeholder="AKIAIOSFODNN7EXAMPLE"
+                          helperText="IAM user access key ID"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={5}>
+                        <TextField fullWidth size="small" label="Secret Access Key" type="password" value={account.secretAccessKey}
+                          onChange={e => updateAwsAccount(index, { secretAccessKey: e.target.value })}
+                          placeholder="Secret value"
+                          helperText="Requires ce:GetCostAndUsage permission"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                      <Grid item xs={12} sm={2}>
+                        <TextField fullWidth size="small" label="Region" value={account.region}
+                          onChange={e => updateAwsAccount(index, { region: e.target.value })}
+                          placeholder="us-east-1"
+                          helperText="Home region"
+                          sx={fieldSx}
+                        />
+                      </Grid>
+                    </Grid>
+                  </Box>
+                ))}
               </Box>
             )}
 
-            {selected.includes('aws') && selected.includes('gcp') && <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 4 }} />}
+            {selected.includes('aws') && selected.includes('gcp') && <Divider sx={{ borderColor: 'rgba(255,255,255,0.1)', mb: 3 }} />}
 
             {selected.includes('gcp') && (
-              <Box sx={{ mb: 4 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
-                  <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#4285F4' }} />
-                  <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 700 }}>Google Cloud Platform</Typography>
-                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.4)' }}>Service Account JSON</Typography>
+              <Box sx={{ mb: 3 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, mb: 1.5 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: '#4285F4' }} />
+                    <Typography variant="subtitle1" sx={{ color: 'white', fontWeight: 800 }}>Google Cloud Platform</Typography>
+                    <Chip label={`${gcpAccounts.length} ${gcpAccounts.length === 1 ? 'project' : 'projects'}`} size="small" sx={{ bgcolor: 'rgba(66,133,244,0.16)', color: '#93c5fd', border: '1px solid rgba(147,197,253,0.28)' }} />
+                  </Box>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={() => setGcpAccounts(prev => [...prev, { label: `GCP project ${prev.length + 1}`, serviceAccountJson: '' }])}
+                    sx={{ color: '#93c5fd', borderColor: 'rgba(147,197,253,0.36)' }}
+                    variant="outlined"
+                  >
+                    Add GCP
+                  </Button>
                 </Box>
-                <TextField
-                  fullWidth multiline rows={5} size="small"
-                  label="Service Account JSON Key"
-                  value={gcpJson}
-                  onChange={e => setGcpJson(e.target.value)}
-                  placeholder={'{\n  "type": "service_account",\n  "project_id": "my-project",\n  ...\n}'}
-                  helperText="Paste the full contents of your downloaded service account key file. Needs roles/billing.viewer."
-                  inputProps={{ style: { fontFamily: 'monospace', fontSize: 12, color: 'white' } }}
-                  sx={{ '& .MuiInputLabel-root': { color: 'rgba(255,255,255,0.6)' }, '& .MuiOutlinedInput-notchedOutline': { borderColor: 'rgba(255,255,255,0.2)' }, '& .MuiFormHelperText-root': { color: 'rgba(255,255,255,0.4)' } }}
-                />
+                {gcpAccounts.map((account, index) => (
+                  <Box key={`gcp-${index}`} sx={{ p: 2, mb: 1.5, borderRadius: 2.5, background: 'linear-gradient(135deg, rgba(66,133,244,0.14), rgba(15,23,42,0.56))', border: '1px solid rgba(147,197,253,0.18)' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5, gap: 2 }}>
+                      <TextField size="small" label="Project label" value={account.label ?? ''}
+                        onChange={e => updateGcpAccount(index, { label: e.target.value })}
+                        placeholder={`GCP project ${index + 1}`}
+                        sx={{ ...fieldSx, maxWidth: 260 }}
+                      />
+                      <IconButton disabled={gcpAccounts.length === 1} onClick={() => removeGcpAccount(index)}
+                        sx={{ color: '#fecaca', opacity: gcpAccounts.length === 1 ? 0.35 : 1 }}>
+                        <DeleteOutlineIcon />
+                      </IconButton>
+                    </Box>
+                    <TextField
+                      fullWidth multiline rows={5} size="small"
+                      label="Service Account JSON Key"
+                      value={account.serviceAccountJson}
+                      onChange={e => updateGcpAccount(index, { serviceAccountJson: e.target.value })}
+                      placeholder={'{\n  "type": "service_account",\n  "project_id": "my-project",\n  ...\n}'}
+                      helperText="Paste the full contents of your downloaded service account key file. Needs roles/billing.viewer."
+                      inputProps={{ style: { fontFamily: 'monospace', fontSize: 12, color: 'white' } }}
+                      sx={fieldSx}
+                    />
+                  </Box>
+                ))}
               </Box>
             )}
 
