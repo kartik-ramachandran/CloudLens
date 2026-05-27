@@ -29,6 +29,7 @@ import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import BugReportIcon from '@mui/icons-material/BugReport';
 import NetworkCheckIcon from '@mui/icons-material/NetworkCheck';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { CacheStatusIndicator } from './CacheStatusIndicator';
 import HealthAndSafetyIcon from '@mui/icons-material/HealthAndSafety';
 import BuildIcon from '@mui/icons-material/Build';
@@ -56,6 +57,7 @@ import VulnerabilityManagement from './VulnerabilityManagement';
 import NetworkSecurityReport from './NetworkSecurityReport';
 import SocIncidentDashboard from './SocIncidentDashboard';
 import SecretsMonitor from './SecretsMonitor';
+import CloudAssistantChat from './CloudAssistantChat';
 
 interface DashboardProps {
   credentials: AzureCredentials;
@@ -124,6 +126,7 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, curren
     { id: 'network-security', label: 'Network Security', icon: <NetworkCheckIcon /> },
     { id: 'secrets-monitor', label: 'Secrets Monitor', icon: <VpnKeyIcon /> },
     { id: 'soc-incidents', label: 'SOC Incidents', icon: <SecurityIcon /> },
+    { id: 'assistant', label: 'Assistant', icon: <ChatBubbleOutlineIcon /> },
     { id: 'ai-insights', label: 'AI Insights', icon: <AutoAwesomeIcon /> },
     { id: 'cloud-accounts', label: 'Cloud Accounts', icon: <CloudIcon /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
@@ -460,6 +463,9 @@ const Dashboard: React.FC<DashboardProps> = ({ credentials, onDisconnect, curren
           )}
           {activePage === 'soc-incidents' && (
             <SocIncidentDashboard credentials={activeCredentials} />
+          )}
+          {activePage === 'assistant' && (
+            <CloudAssistantChat />
           )}
           {activePage === 'ai-insights' && (
             <AIInsightsTab credentials={activeCredentials} />

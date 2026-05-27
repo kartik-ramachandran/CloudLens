@@ -2,6 +2,9 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using CloudLens.API.Services;
 using CloudLens.API.Data;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -83,6 +86,7 @@ builder.Services.AddSwaggerGen();
 // Register Services
 builder.Services.AddScoped<IAzureService, AzureService>();
 builder.Services.AddScoped<IAIService, OpenAIService>();
+builder.Services.AddSingleton<IChatSessionStore, FileChatSessionStore>();
 builder.Services.AddScoped<ICacheService, CacheService>();
 builder.Services.AddScoped<IAISettingsService, AISettingsService>();
 builder.Services.AddScoped<IJiraService, JiraService>();
@@ -176,11 +180,7 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        db.Database.EnsureCreated();
-
-        bool isPostgres = db.Database.IsNpgsql();
-        var scriptName = isPostgres ? "startup-postgres.sql" : "startup-sqlite.sql";
-        ExecuteSqlScript(db, logger, Path.Combine(app.Environment.ContentRootPath, "sql", scriptName), ignoreDuplicateColumns: !isPostgres);
+        ApplyEfMigrations(db, logger);
 
         logger.LogInformation("✅ Database initialization completed");
     }
@@ -192,30 +192,27 @@ using (var scope = app.Services.CreateScope())
 
 app.Run();
 
-static void ExecuteSqlScript(AppDbContext db, ILogger logger, string scriptPath, bool ignoreDuplicateColumns)
+static void ApplyEfMigrations(AppDbContext db, ILogger logger)
 {
-    if (!File.Exists(scriptPath))
+    var databaseCreator = db.GetService<IRelationalDatabaseCreator>();
+    var historyRepository = db.GetService<IHistoryRepository>();
+
+    if (databaseCreator.Exists() && databaseCreator.HasTables())
     {
-        throw new FileNotFoundException("Database startup SQL script was not found.", scriptPath);
+        db.Database.ExecuteSqlRaw(historyRepository.GetCreateIfNotExistsScript());
+
+        if (!historyRepository.GetAppliedMigrations().Any())
+        {
+            foreach (var migrationId in db.Database.GetMigrations().OrderBy(m => m))
+            {
+                var insertScript = historyRepository.GetInsertScript(
+                    new HistoryRow(migrationId, "8.0.11"));
+                db.Database.ExecuteSqlRaw(insertScript);
+            }
+
+            logger.LogInformation("Baselined existing database with EF migration history.");
+        }
     }
 
-    var statements = File.ReadAllText(scriptPath)
-        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-    foreach (var statement in statements)
-    {
-        if (string.IsNullOrWhiteSpace(statement))
-        {
-            continue;
-        }
-
-        try
-        {
-            db.Database.ExecuteSqlRaw(statement);
-        }
-        catch (Exception ex) when (ignoreDuplicateColumns && ex.Message.Contains("duplicate column name", StringComparison.OrdinalIgnoreCase))
-        {
-            logger.LogDebug("Skipping existing SQLite column while applying {ScriptPath}", scriptPath);
-        }
-    }
+    db.Database.Migrate();
 }

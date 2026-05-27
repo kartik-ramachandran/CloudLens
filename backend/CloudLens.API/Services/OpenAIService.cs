@@ -62,6 +62,122 @@ public class OpenAIService : IAIService
         }
     }
 
+    public async Task<string> GenerateChatResponseAsync(IEnumerable<ChatExchange> messages, string systemPrompt, CancellationToken cancellationToken = default)
+    {
+        var settings = await _aiSettingsService.GetOrCreateSettingsAsync();
+        if (string.IsNullOrEmpty(settings.ApiKey) && !string.Equals(settings.Provider, "Bedrock", StringComparison.OrdinalIgnoreCase))
+            throw new Exception("AI API key is not configured. Please configure it in Settings.");
+
+        var normalizedMessages = messages
+            .Where(m => !string.IsNullOrWhiteSpace(m.Content))
+            .Select(m => new ChatExchange(
+                string.Equals(m.Role, "assistant", StringComparison.OrdinalIgnoreCase) ? "assistant" : "user",
+                m.Content.Trim()))
+            .ToList();
+
+        if (!normalizedMessages.Any())
+            throw new Exception("A chat message is required.");
+
+        return settings.Provider.ToLowerInvariant() switch
+        {
+            "openai" => await GenerateOpenAIChatResponseAsync(settings, systemPrompt, normalizedMessages, cancellationToken),
+            "azureopenai" => await GenerateAzureOpenAIChatResponseAsync(settings, systemPrompt, normalizedMessages, cancellationToken),
+            "anthropic" => await GenerateAnthropicChatResponseAsync(settings, systemPrompt, normalizedMessages, cancellationToken),
+            "bedrock" => await GenerateBedrockChatResponseAsync(settings, systemPrompt, normalizedMessages),
+            _ => throw new Exception($"Unsupported AI provider: {settings.Provider}")
+        };
+    }
+
+    private async Task<string> GenerateOpenAIChatResponseAsync(AISettings settings, string systemPrompt, List<ChatExchange> messages, CancellationToken cancellationToken)
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {settings.ApiKey}");
+
+        var requestBody = new
+        {
+            model = settings.Model,
+            messages = new[] { new { role = "system", content = systemPrompt } }
+                .Concat(messages.Select(m => new { role = m.Role, content = m.Content }))
+                .ToArray(),
+            max_tokens = Math.Max(settings.MaxTokens, 1200),
+            temperature = Math.Min(settings.Temperature, 0.5)
+        };
+
+        var endpoint = settings.Endpoint ?? "https://api.openai.com/v1/chat/completions";
+        var response = await httpClient.PostAsync(endpoint, new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"), cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
+        return apiResponse?.Choices?.FirstOrDefault()?.Message.Content?.Trim() ?? "";
+    }
+
+    private async Task<string> GenerateAzureOpenAIChatResponseAsync(AISettings settings, string systemPrompt, List<ChatExchange> messages, CancellationToken cancellationToken)
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Add("api-key", settings.ApiKey);
+
+        var requestBody = new
+        {
+            messages = new[] { new { role = "system", content = systemPrompt } }
+                .Concat(messages.Select(m => new { role = m.Role, content = m.Content }))
+                .ToArray(),
+            max_tokens = Math.Max(settings.MaxTokens, 1200),
+            temperature = Math.Min(settings.Temperature, 0.5)
+        };
+
+        var endpoint = settings.Endpoint ?? throw new Exception("Azure OpenAI requires an endpoint URL. Please configure it in Settings.");
+        var response = await httpClient.PostAsync(endpoint, new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"), cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        var apiResponse = JsonSerializer.Deserialize<OpenAIResponse>(responseContent, _jsonOptions);
+        return apiResponse?.Choices?.FirstOrDefault()?.Message.Content?.Trim() ?? "";
+    }
+
+    private async Task<string> GenerateAnthropicChatResponseAsync(AISettings settings, string systemPrompt, List<ChatExchange> messages, CancellationToken cancellationToken)
+    {
+        var httpClient = _httpClientFactory.CreateClient();
+        httpClient.DefaultRequestHeaders.Clear();
+        httpClient.DefaultRequestHeaders.Add("x-api-key", settings.ApiKey);
+        httpClient.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+        var requestBody = new
+        {
+            model = settings.Model,
+            system = systemPrompt,
+            max_tokens = Math.Max(settings.MaxTokens, 1200),
+            temperature = Math.Min(settings.Temperature, 0.5),
+            messages = messages.Select(m => new { role = m.Role, content = m.Content }).ToArray()
+        };
+
+        var response = await httpClient.PostAsync(
+            settings.Endpoint ?? "https://api.anthropic.com/v1/messages",
+            new StringContent(JsonSerializer.Serialize(requestBody), Encoding.UTF8, "application/json"),
+            cancellationToken);
+        response.EnsureSuccessStatusCode();
+
+        var responseContent = await response.Content.ReadAsStringAsync(cancellationToken);
+        using var doc = JsonDocument.Parse(responseContent);
+        if (doc.RootElement.TryGetProperty("content", out var contentArray) && contentArray.GetArrayLength() > 0)
+            if (contentArray[0].TryGetProperty("text", out var textElement))
+                return textElement.GetString()?.Trim() ?? "";
+
+        return "";
+    }
+
+    private async Task<string> GenerateBedrockChatResponseAsync(AISettings settings, string systemPrompt, List<ChatExchange> messages)
+    {
+        var transcript = string.Join("\n\n", messages.Select(m => $"{m.Role.ToUpperInvariant()}: {m.Content}"));
+        return (await CallBedrockClaudeAsync(
+            systemPrompt: systemPrompt,
+            userPrompt: transcript,
+            maxTokens: Math.Max(settings.MaxTokens, 1200),
+            temperature: (float)Math.Min(settings.Temperature, 0.5))).Trim();
+    }
+
     private async Task<List<AIRecommendation>> GenerateOpenAIRecommendationsAsync(AISettings settings, string prompt)
     {
         var httpClient = _httpClientFactory.CreateClient();

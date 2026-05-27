@@ -20,6 +20,7 @@ import BugReportIcon from '@mui/icons-material/BugReport';
 import LanIcon from '@mui/icons-material/Lan';
 import SettingsIcon from '@mui/icons-material/Settings';
 import VpnKeyIcon from '@mui/icons-material/VpnKey';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutline';
 import { AzureCredentials } from '../types';
 import { CloudProvider } from './CloudProviderSelectModal';
 import { GroupLabel } from '../theme/designSystem';
@@ -64,6 +65,7 @@ const FEATURE_CARDS: FeatureCard[] = [
   { id: 'vulnerabilities',   title: 'Vulnerabilities',     description: 'Defender CVE findings, CVSS scores and patch status',            icon: <BugReportIcon sx={{ fontSize: 34 }} />,       color: '#b22222', group: 'Compliance & Security', badge: 'CC7.2' },
   { id: 'network-security',  title: 'Network Security',    description: 'NSG risky rules, public IP exposure and open ports',             icon: <LanIcon sx={{ fontSize: 34 }} />,             color: '#5c2d91', group: 'Compliance & Security', badge: 'CC6.6' },
   { id: 'secrets-monitor',   title: 'Secrets Monitor',     description: 'App registration secrets and Key Vault cert/secret expiry',       icon: <VpnKeyIcon sx={{ fontSize: 34 }} />,          color: '#8764b8', group: 'Compliance & Security', badge: 'CC6.1' },
+  { id: 'assistant',         title: 'Assistant',           description: 'Chat with CloudLens about cloud, security, FinOps and compliance', icon: <ChatBubbleOutlineIcon sx={{ fontSize: 34 }} />, color: '#0891b2', group: 'Insights' },
   { id: 'recommendations',   title: 'Recommendations',     description: 'Defender for Cloud security recommendations',                    icon: <SecurityIcon sx={{ fontSize: 34 }} />,        color: '#e67e00', group: 'Insights' },
   { id: 'ai-insights',       title: 'AI Insights',         description: 'AI-powered cost, security and compliance insights',              icon: <AutoAwesomeIcon sx={{ fontSize: 34 }} />,     color: '#0099bc', group: 'Insights' },
   { id: 'cloud-accounts',    title: 'Cloud Accounts',      description: 'Manage connected Azure subscriptions',                           icon: <CloudIcon sx={{ fontSize: 34 }} />,           color: '#0078d4', group: 'Insights' },

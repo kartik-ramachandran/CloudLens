@@ -164,7 +164,7 @@ Set `DefaultConnection` to a Postgres connection string:
 Host=your-host;Database=cloudlens;Username=user;Password=pass
 ```
 
-SQL migration scripts are in [`sql/`](sql/) — run them in order on a fresh database.
+Database schema is managed by EF Core migrations under `backend/CloudLens.API/Data/Migrations`; the API applies pending migrations at startup.
 
 ### Environment Variables
 
@@ -205,8 +205,7 @@ Jwt__Secret=your-secret
 │   └── CloudLens.API/
 │       ├── Controllers/        # API endpoints
 │       ├── Services/           # Business logic
-│       ├── Data/               # EF Core context & entities
-│       └── sql/                # PostgreSQL migration scripts
+│       └── Data/               # EF Core context, entities, and migrations
 ├── frontend/
 │   └── cloudlens-ui/
 │       └── src/
@@ -214,7 +213,6 @@ Jwt__Secret=your-secret
 │           ├── services/       # API client
 │           ├── theme/          # MUI theme & design system
 │           └── types/          # TypeScript types
-├── sql/                        # Canonical PostgreSQL migrations
 └── docker-compose.yml
 ```
 
@@ -267,4 +265,3 @@ Contact: kartik_ramachandran@outlook.com
 By contributing to this project, you agree your contributions will be licensed under AGPL-3.0.
 
 ---
-

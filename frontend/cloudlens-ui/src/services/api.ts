@@ -500,6 +500,66 @@ export const getReadinessAssessment = async (credentials: AzureCredentials) => {
   return response.data;
 };
 
+// Chat Assistant APIs
+export interface ChatSession {
+  sessionId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  messageCount: number;
+}
+
+export interface ChatMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}
+
+export const getChatSessions = async (): Promise<ChatSession[]> => {
+  const response = await api.get('/chat/sessions');
+  return response.data;
+};
+
+export const getChatMessages = async (sessionId: string): Promise<ChatMessage[]> => {
+  const response = await api.get(`/chat/sessions/${sessionId}/messages`);
+  return response.data;
+};
+
+export const renameChatSession = async (sessionId: string, title: string) => {
+  const response = await api.patch(`/chat/sessions/${sessionId}/title`, { title });
+  return response.data;
+};
+
+export const deleteChatSession = async (sessionId: string) => {
+  const response = await api.delete(`/chat/sessions/${sessionId}`);
+  return response.data;
+};
+
+export const sendChatMessage = async (params: {
+  sessionId?: string;
+  message: string;
+  history?: Array<{ role: string; content: string }>;
+  file?: File | null;
+  signal?: AbortSignal;
+}): Promise<Response> => {
+  const form = new FormData();
+  if (params.sessionId) form.append('sessionId', params.sessionId);
+  form.append('message', params.message);
+  if (params.history?.length) form.append('history', JSON.stringify(params.history));
+  if (params.file) form.append('file', params.file);
+
+  const headers: HeadersInit = {};
+  const token = localStorage.getItem('authToken');
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  return fetch(`${API_BASE_URL.replace(/\/$/, '')}/chat/send`, {
+    method: 'POST',
+    body: form,
+    headers,
+    signal: params.signal,
+  });
+};
+
 // SOC Incident Management APIs
 export const getSocDashboardStats = async (credentials: AzureCredentials) => {
   const response = await api.post('/SocIncident/dashboard', {
